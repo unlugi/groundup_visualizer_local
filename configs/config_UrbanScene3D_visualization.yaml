@@ -1,0 +1,62 @@
+DEBUG:
+  USE_WSL_PATHS: True # (type:bool) - Use Windows path format for WSL paths(if your data is in wsl) for rendering in GUI mode
+  WSL_MOUNT: '//wsl.localhost/Ubuntu/' # (type:str) - Path to WSL mount
+  USE_DEBUG: False # (type:bool) - Debug mode. If true, code will run in Blender GUI mode. Else, it will run in background mode as a python script.
+
+PATHS:
+  PATH_TO_REPO: '/home/Projects/groundup_visualizer_local/' # (type:str) - Path to the root of the repo
+  PATH_TO_MODEL: 'test231202_235909_v14_guide_gt_pt_rn_pt_vae_l1l2_max5.2_lr3_testing_BLENDER' # (type:str) - Path to model output (diffusion))
+  DATASET_NAME: 'sf_test_1k_2' # (type:str) - Name of dataset
+
+SETTINGS:
+  ENGINE: 'CYCLES' # (type:str) - e.g. CYCLES, BLENDER_EEVEE, ...
+  GPU_ID: '01' # (type:str) - e.g = *, * = { 01,02,03,04, CPU...}
+
+RENDER:
+  RES_X: 512 #256 # (type: int)
+  RES_Y: 512 #256 # (type: int)
+  DEPTH:
+    FORMAT: 'OPEN_EXR' # (type:str) - Format of files generated. Either PNG or OPEN_EXR
+    SCALE: 2.0 # (type:float) - Scaling applied to depth. Depends on size of mesh. Try out values for a good result. Ignored if format is OPEN_EXR.
+  IMAGE:
+    FORMAT: 'PNG' # (type:str) - Format of files generated. PNG, JPEG, ...
+    COLOR_DEPTH: '16' # (type:str) - 'Number of bit per channel used for output. Either 8 or 16.'
+
+LIGHTING:
+  USE_SUN: True # (type:bool) - Use sun light, else point
+  USE_AMBIENT: True # (type:bool) - Use ambient light
+  USE_ENVIRONMENT: True # (type:bool) - Use environment light
+  STRENGTH: 1.0 # (type:float) - Strength (energy) of light
+  LOCATION_ANGLE_OFFSET: 30 # (type:float) - Angle offset for light location to camera
+  LOCATION_DISTANCE_OFFSET: 2 # (type:float) - Distance offset for light location to camera
+  LOCATION_HEIGHT_OFFSET: 1.0 # (type:float) - Height offset for light location to camera
+  DIRECTION_ANGLE: 30 # (type:float) - Angle of light direction
+
+
+CAMERA:
+  LOCATION_X: 0.0 # (type:list of float) - for [x, y, z] location of camera  # perspective camera settings
+  LOCATION_Y: 0.0 # (type:list of float) - for [x, y, z] location of camera
+  LOCATION_Z: 0.0 # (type:list of float) - for [x, y, z] location of camera
+  CLIP_START: 0.01 # (type:float) - camera clipping plane start
+  CLIP_END: 4.0 # (type:float) - camera clipping plane end
+  VIEWS: 1 #1500 # (type:int) - Number of views to be rendered for each scene
+
+  TOP_DOWN: False # (type:bool) - Add a second camera in the scene for rendering the scene from above
+  TYPE_TOPDOWN: 'ORTHO' # (type:str) - Topdown camera type. ORTHO or PERSP
+  CENTER_TOPDOWN: True # (type:bool) - Align topdown camera position to scene center. If false, position directly above perspective camera.
+  CLIP_END_TOPDOWN: 20.0 # (type:float) - camera clipping plane end for topdown camera
+
+FILE_OUTPUT:
+  RENDER: 'render' # (type:str) - Path the sketches will be dumped to.
+  SKETCH: 'sketch' # (type:str) - Path the renders will be dumped to.
+  DEPTH: 'depth' # (type:str) - Path the depth will be dumped to.
+  SEGMENTATION: 'segmentation' # (type:str) - Path the segmentation map will be dumped to.
+  CAMERA: 'camera' # (type:str) - Path the cameras will be dumped to.
+  GEOMETRY: 'geometry' # (type:str) - Path the geometry will be dumped to.
+  LABEL: 'label' # (type:str) - Path the labels will be dumped to.
+
+FREESTYLE:
+  DO_SVG: False # (type:bool) - Render vector images
+  FORMAT: 'svg' # (type:str) - Output sketch file format. Either 'svg' or 'png'
+  # Other freestyle options to come here ...
+

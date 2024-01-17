@@ -5,7 +5,7 @@ DEBUG:
 
 PATHS:
   PATH_TO_REPO: '/home/Projects/groundup_visualizer_local/' # (type:str) - Path to the root of the repo
-  PATH_TO_MODEL: 'test231202_235909_v14_guide_gt_pt_rn_pt_vae_l1l2_max5.2_lr3_testing_BLENDER' # (type:str) - Path to model output (diffusion))
+  PATH_TO_MODEL: 'TEST' # (type:str) - Path to model output (diffusion))
   DATASET_NAME: 'sf_test_1k_2' # (type:str) - Name of dataset
 
 SETTINGS:

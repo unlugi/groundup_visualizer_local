@@ -94,7 +94,8 @@ class Heightfield:
                          grid_resolution=grid_resolution, cell_size=cell_size)
 
         # Depth values will determine building and ground heights
-        hh.heightfield = 5 - depth
+        # hh.heightfield = 5 - depth
+        hh.heightfield = depth.max() - depth
 
         return hh
 

@@ -24,17 +24,18 @@ def main(sample_path, dataset_root, save_path, scene_name=None):
 
     # Run meshing
     offset = (-3.0, 0.0, 4.0)
-    cam_p_p3d, rendered_image = gup_visualizer.render_scene(image_size=(1024, 1024), offset=offset)
+    # cam_p_p3d, rendered_image = gup_visualizer.render_scene(image_size=(256, 256), offset=offset)
+    cam_p_p3d = 0
 
-    # gup_visualizer.export_mesh_p3d(mesh_name=mode+'_updated', save_path=save_path, update_face_colors=True)
+    gup_visualizer.export_mesh_p3d(mesh_name=mode+'_updated', save_path=save_path, update_face_colors=False)
 
     # Save mesh
     if save_mesh: # p3d mesh won't save like this
         filename = os.path.join(save_path, "mesh_{}_elevation_{}.ply".format(mode ,gup_visualizer.sample_idx))
         gup_visualizer.mesh.export(filename, file_type='ply')
 
-    filename = os.path.join(save_path, "image_{}_{}.png".format(mode, gup_visualizer.sample_idx))
-    rendered_image.save(filename, 'PNG')
+    # filename = os.path.join(save_path, "image_{}_{}.png".format(mode, gup_visualizer.sample_idx))
+    # rendered_image.save(filename, 'PNG')
 
     return gup_visualizer, cam_p_p3d, rendered_image
 
@@ -59,7 +60,7 @@ if __name__ == '__main__':
     dataset_root_path = os.path.join(data_path, dataset_name)
 
     # Save path
-    model_name = model_name + '_testing'
+    model_name = model_name + '_DEBUG'
 
     save_path = os.path.join(data_path, 'models', model_name, "viz")
     if not os.path.exists(save_path):

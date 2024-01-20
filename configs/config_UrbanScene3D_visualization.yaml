@@ -32,7 +32,6 @@ LIGHTING:
   LOCATION_HEIGHT_OFFSET: 1.0 # (type:float) - Height offset for light location to camera
   DIRECTION_ANGLE: 30 # (type:float) - Angle of light direction
 
-
 CAMERA:
   LOCATION_X: 0.0 # (type:list of float) - for [x, y, z] location of camera  # perspective camera settings
   LOCATION_Y: 0.0 # (type:list of float) - for [x, y, z] location of camera

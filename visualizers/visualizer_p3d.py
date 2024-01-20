@@ -254,7 +254,7 @@ class GroundUpVisualizerP3D(BaseVisualizer):
 
         # filename = os.path.join(save_path, "mesh_{}_{}.obj".format(mesh_name, self.sample_idx))
         filename = os.path.join(save_path, mesh_name)
-        mesh_trimesh.export(filename, file_type='obj', include_color=True)
+        mesh_trimesh.export(filename+".obj", file_type='obj', include_color=True)
         # mesh_with_color = export_obj(mesh_trimesh, include_color=True, include_normals=True)
         # mesh_with_color.export(filename, file_type='obj', include_color=True)
 

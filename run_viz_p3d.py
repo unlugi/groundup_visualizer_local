@@ -122,11 +122,11 @@ def get_configs():
 
     # Get samples for diffusion
     path_diffusion_samples = os.path.join(cfg.path_root_diffusion, cfg.model_name_diffusion, 'test/epoch0035')
-    samples_diffusion = sorted(glob.glob(os.path.join(path_diffusion_samples, '*.npy')))
+    samples_diffusion = sorted(glob.glob(os.path.join(path_diffusion_samples, '*_gt.npy')))
 
     # Get samples for HF
     path_hf_samples = os.path.join(cfg.path_root_hf, cfg.model_name_hf, cfg.dataset_name, 'diffusion/pred_depth')
-    samples_hf = sorted(glob.glob(os.path.join(path_hf_samples, '*.npy')))
+    samples_hf = sorted(glob.glob(os.path.join(path_hf_samples, '*_pred.npy')))
 
     # Save path
     save_path = os.path.join(cfg.save_path, 'testing_renders')

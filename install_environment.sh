@@ -2,6 +2,8 @@
 
 # Step 1: Create and activate a conda environment
 conda create -n blender_vis python=3.10
+
+source ~/miniconda3/etc/profile.d/conda.sh
 conda activate blender_vis
 
 # Step 2: Install bpy

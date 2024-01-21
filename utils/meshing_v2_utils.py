@@ -3,6 +3,7 @@
 import kornia
 import torch
 import numpy as np
+import random
 from pytorch3d.structures import Pointclouds
 from pytorch3d.ops import (knn_points,
                            ball_query,
@@ -23,7 +24,7 @@ import torch
 from pytorch3d.structures import Meshes
 from pytorch3d.renderer import Textures
 
-# from torch_scatter import scatter_max
+from utils.color_palette import bold_pastel_rainbow_palette
 
 
 @jit(nopython=True)
@@ -165,6 +166,9 @@ class BuildingMeshGenerator:
         self.use_color = use_color
         self.mask_color = mask_color
 
+        self.pastel_rainbow_palette = bold_pastel_rainbow_palette
+        self.color_palette_idx = None
+
     def get_lookup_labels(self, mask_fg_tensor):
 
         # Apply dilation
@@ -207,13 +211,37 @@ class BuildingMeshGenerator:
                                                  dtype=np.uint8)  # low=0 for bold colors
             label_c_rgb = np.ones((label_c.shape[0], 3))
             for idx in range(len(unique_labels)):
-                if idx == 0:  # ground is always green
-                    label_c_rgb[reverse_indices == idx] = np.array([98, 227, 132], dtype=np.uint8)
+                if idx == 0:  # ground is always green # rgb(211, 211, 211) grey
+                    # label_c_rgb[reverse_indices == idx] = np.array([98, 227, 132], dtype=np.uint8)
+                    label_c_rgb[reverse_indices == idx] = np.array([250,250,250], dtype=np.uint8)
                 else:
                     label_c_rgb[reverse_indices == idx] = label_rgb_unique[idx]
         elif assign_colors == 'gt':
             label_c_rgb = self.mask_color['segmap_topdown'][0].view(-1, 3)
             label_c_rgb = label_c_rgb.cpu().numpy()
+
+        elif assign_colors == 'rainbow':
+
+            # Get unique labels for each detected building
+            unique_labels, reverse_indices = np.unique(label_c, return_inverse=True)
+
+            # Generate a random color index for each building from the color palette
+            if self.color_palette_idx is None:
+                # idx_palette = np.random.randint(low=0, high=len(self.pastel_rainbow_palette), size=len(unique_labels), without_replacement=True)
+                idx_palette = random.sample(range(0, len(self.pastel_rainbow_palette) + 1), len(unique_labels))
+                self.color_palette_idx = idx_palette
+            else:
+                idx_palette = self.color_palette_idx
+
+            label_c_rgb = np.ones((label_c.shape[0], 3))
+            for idx in range(len(unique_labels)):
+                if idx == 0:  # ground is always green # rgb(211, 211, 211) grey
+                    # label_c_rgb[reverse_indices == idx] = np.array([98, 227, 132], dtype=np.uint8)
+                    label_c_rgb[reverse_indices == idx] = np.array([250,250,250], dtype=np.uint8)
+                else:
+                    label_c_rgb[reverse_indices == idx] = self.pastel_rainbow_palette[idx_palette[idx]]
+
+
         else:
             print('unrecognized color assignment!')
 
@@ -230,7 +258,8 @@ class BuildingMeshGenerator:
 
             # Create per-building colors
             # color_per_building_n3 = self.create_colors(building_lookup_labels, assign_colors='gt').astype(np.uint8)
-            color_per_building_n3 = self.create_colors(building_lookup_labels, assign_colors='random').astype(np.uint8)
+            # color_per_building_n3 = self.create_colors(building_lookup_labels, assign_colors='random').astype(np.uint8)
+            color_per_building_n3 = self.create_colors(building_lookup_labels, assign_colors='rainbow').astype(np.uint8)
 
         if origin is None and grid_size is None:
             heightfield_buildings = Heightfield.from_depth_array(depths, min_scene_height=0.01, max_scene_height=5.0)

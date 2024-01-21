@@ -8,9 +8,10 @@ import numpy as np
 import torch
 import bpy
 
+
 class GroundUpVisualizerBlender(GroundUpVisualizerP3D):
     def __init__(self, sample_path, dataset_root, scene_name, add_color_to_mesh=None, device='cpu'):
-        super().__init__(sample_path, dataset_root, scene_name, add_color_to_mesh, device)
+        super().__init__(sample_path, dataset_root, scene_name, add_color_to_mesh, device, )
 
         # Get cameras - keep the raw camera matrices for Blender
         self.cameras = self.parse_path_and_read_cameras()

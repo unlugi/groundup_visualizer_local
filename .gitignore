@@ -1,0 +1,16 @@
+*.pyc
+.vscode/
+debug_dump
+logs/
+logs
+models/*.ckpt
+weights/*.ckpt
+**__pycache__*
+data/
+.ipynb_checkpoints
+utils/__pycache__/*
+utils/__pycache__
+utils/__pycache__/*.pyc
+visualizers/__pycache__/*
+visualizers/__pycache__
+visualizers/__pycache__/*.pyc

@@ -4,12 +4,14 @@ import torch
 import PIL.Image as Image
 
 class BaseVisualizer:
-    def __init__(self, sample_path, dataset_root, scene_name=None):
+    def __init__(self, sample_path, dataset_root, save_path=None, scene_name=None, sample_baseline=None, ):
         self.orig_image_size = (256, 256)
         self.dataset_root = dataset_root
         self.sample_idx = sample_path.split('/')[-1].split('_')[0][-4:]
-        self.sample_path = sample_path
+        self.sample_path = sample_path # diffusion
+        self.sample_baseline = sample_baseline # height-fields
         self.scene_name = scene_name
+        self.save_path = save_path
         self.data = self.parse_path_and_read_data()
         self.cameras = self.parse_path_and_read_cameras()
         self.masks = self.parse_path_and_read_segmentation()
@@ -30,8 +32,17 @@ class BaseVisualizer:
         gt = np.load(path_gt)
         proj = np.load(path_proj)
         pred = np.load(path_pred)
+        pred_baseline = None
 
-        return {'gt': gt, 'proj': proj, 'pred': pred}
+        if self.sample_baseline:
+            path_baseline = self.sample_baseline
+            pred_baseline = np.load(path_baseline)
+
+        return {'gt': gt,
+                'proj': proj,
+                'pred': pred,
+                'pred_baseline': pred_baseline,
+                }
 
     def parse_path_and_read_segmentation(self):
         # Get paths for cam_td, cam_p, K_td, K_p

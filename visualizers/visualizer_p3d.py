@@ -16,13 +16,18 @@ from pytorch3d.structures import Meshes
 from pytorch3d.renderer import Textures
 
 class GroundUpVisualizerP3D(BaseVisualizer):
-    def __init__(self, sample_path, dataset_root, scene_name, add_color_to_mesh=None, device='cpu'):
-        super().__init__(sample_path, dataset_root, scene_name)
+    def __init__(self, sample_path, dataset_root, save_path, scene_name, samples_baseline, add_color_to_mesh=None, device='cpu'):
+        super().__init__(sample_path, dataset_root, save_path, scene_name,samples_baseline)
         self.device = self.get_device(device)
         self.masks = self.move_to_device(self.masks)
         self.cameras = self.parse_path_and_read_cameras()
         self.add_color_to_mesh = add_color_to_mesh
         self.mesh_generator = BuildingMeshGenerator(use_color=add_color_to_mesh, mask_color=self.masks, apply_dilation_mask=False)
+        self.mesh_dict = {'gt': None,
+                          'pc': None,
+                          'pred': None,
+                          'pred_baseline': None,
+                          }
 
     def get_device(self, device_name):
         # Set device
@@ -156,6 +161,10 @@ class GroundUpVisualizerP3D(BaseVisualizer):
             mesh = self.mesh_generator.generate_mesh(depths=self.data['pred'],
                                                      grid_size=(3.35, 3.35),
                                                      )
+        elif model_name == 'pred_baseline':
+            mesh = self.mesh_generator.generate_mesh(depths=self.data['pred_baseline'],
+                                                     grid_size=(3.35, 3.35),
+                                                     )
         else: # TODO pointcloud proj
             raise NotImplementedError
         return mesh
@@ -181,23 +190,25 @@ class GroundUpVisualizerP3D(BaseVisualizer):
 
         # Create a PyTorch3D Meshes object
         self.mesh = Meshes(verts=[verts_transformed], faces=[faces], verts_normals=[normals], textures=textures)
-        # self.mesh = Meshes(verts=[verts_transformed], faces=[faces], textures=textures)
+        # self.mesh_dict[model_name] = Meshes(verts=[verts_transformed], faces=[faces], verts_normals=[normals], textures=textures)
 
         if update_face_colors:
-            target_color_value = np.array([98, 227, 132]) / 255.0
+            print("Fixing mesh colors...")
+            # target_color_value = np.array([98, 227, 132]) / 255.0 #
+            target_color_value = np.array([250,250,250]) / 255.0
 
             start = time.time()
             # Update vertex colors based on the target color
-            # self.mesh = update_vertex_colors(self.mesh, target_color_value)
             self.mesh = update_vertex_colors_fast(self.mesh, target_color_value)
-            # self.mesh = update_vertex_colors_fast_padding(self.mesh, target_color_value)
+
             end = time.time()
             print('time it took:{} seconds '.format(end-start))
 
+        # Update mesh in mesh_dict
+        self.mesh_dict[model_name] = self.mesh # TODO: check this out
+
 
     def render_scene(self, image_size=(256, 256), offset=(0, 0, 0)):
-
-        print('Rendering scene...')
 
         # Create pytorch3D cameras
         K = torch.from_numpy(self.cameras['K_p']).to(self.device).clone()
@@ -218,6 +229,8 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         # Render the scene
         renderer_ = mesh_renderer( cameras=cameras_perspective, imsize=image_size, device=self.device, offset=offset)
         perspective_render = renderer_(self.mesh)
+        # perspective_render = renderer_(self.mesh_dict[mode])
+
 
         perspective_color = perspective_render[0, :].detach().cpu().numpy()
         perspective_color = Image.fromarray((perspective_color * 255.0).astype(np.uint8))
@@ -229,18 +242,23 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         # Copy RGB values from the original image and set alpha to 255 (fully opaque)
         image_w_bg.paste(perspective_color, (0, 0), mask=perspective_color)
 
-        return cameras_perspective, image_w_bg
+        return image_w_bg
 
 
-    def export_mesh_p3d(self, mesh_name, save_path, update_face_colors=True):
+    def export_mesh_p3d(self, mesh_name, save_path, update_face_colors=True, mode='gt'):
 
         mesh_pytorch3d = self.mesh
+        # mesh_pytorch3d = self.mesh_dict[mode] # TODO: check this out
+
 
         if update_face_colors:
-            target_color_value = np.array([98, 227, 132])/ 255.0
+            print("Fixing mesh colors...")
+
+            # target_color_value = np.array([98, 227, 132])/ 255.0 # 211, 211, 211
+            target_color_value = np.array([250,250,250]) / 255.0
 
             # Update vertex colors based on the target color
-            mesh_pytorch3d = update_vertex_colors(mesh_pytorch3d, target_color_value)
+            mesh_pytorch3d = update_vertex_colors_fast(mesh_pytorch3d, target_color_value)
 
         # Convert PyTorch3D mesh to trimesh
         verts_np = mesh_pytorch3d.verts_packed().detach().cpu().numpy()
@@ -259,6 +277,36 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         # mesh_with_color.export(filename, file_type='obj', include_color=True)
 
 
+    def mesh_and_render_all_modes(self, image_size=(256, 256),
+                                        light_offset=(-3.0, 0.0, 4.0),
+                                        render_scene=False,
+                                        export_mesh=False,
+                                        fix_colors=False):
 
+        for mode in self.mesh_dict.keys():
+            print('Current mode: ', mode)
 
+            # Create save path for current scene
+            save_path = os.path.join(self.save_path, self.sample_idx)
+            if not os.path.exists(save_path):
+                os.makedirs(save_path)
 
+            if mode == 'pc':
+                print('Skipping pointcloud mode')
+                continue
+
+            # Get the mesh
+            print('Obtaining 3D mesh...')
+            self.get_mesh_in_world_coordinates(mode, update_face_colors=fix_colors)
+
+            if render_scene:
+                print('Rendering scene...')
+                # Render the scene with the current mesh mode
+                rendered_image = self.render_scene(image_size=image_size, offset=light_offset)
+                # Save the rendered image
+                path_render = os.path.join(save_path, "render_{}_{}.png".format(mode, self.sample_idx))
+                rendered_image.save(path_render, 'PNG')
+
+            if export_mesh:
+                print('Exporting mesh...')
+                self.export_mesh_p3d(mesh_name='mesh_{}'.format(mode), save_path=save_path, update_face_colors=False)

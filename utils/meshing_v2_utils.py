@@ -181,7 +181,7 @@ class BuildingMeshGenerator:
             mask_fg_tensor = kornia.morphology.dilation(mask_fg_tensor[None, ...], kernel=kernel)[0, ...]
 
         # Connected components for building mask segmentation
-        mask_fg_labels = kornia.contrib.connected_components(mask_fg_tensor[None, ...].float(), num_iterations=200)
+        mask_fg_labels = kornia.contrib.connected_components(mask_fg_tensor[None, ...].float(), num_iterations=400)
 
         lookup_labels = mask_fg_labels.detach().cpu().numpy()[0, 0]
 
@@ -227,8 +227,8 @@ class BuildingMeshGenerator:
 
             # Generate a random color index for each building from the color palette
             if self.color_palette_idx is None:
-                # idx_palette = np.random.randint(low=0, high=len(self.pastel_rainbow_palette), size=len(unique_labels), without_replacement=True)
-                idx_palette = random.sample(range(0, len(self.pastel_rainbow_palette) + 1), len(unique_labels))
+                idx_palette = np.random.randint(low=0, high=len(self.pastel_rainbow_palette), size=len(unique_labels))
+                # idx_palette = random.sample(range(0, len(self.pastel_rainbow_palette)), len(unique_labels))
                 self.color_palette_idx = idx_palette
             else:
                 idx_palette = self.color_palette_idx

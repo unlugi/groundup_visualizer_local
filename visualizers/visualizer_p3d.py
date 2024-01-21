@@ -4,6 +4,8 @@ import numpy as np
 import torch
 import PIL.Image as Image
 import trimesh
+from tqdm import tqdm
+
 from trimesh.exchange.obj import export_obj
 
 from .visualizer_base import BaseVisualizer
@@ -283,16 +285,22 @@ class GroundUpVisualizerP3D(BaseVisualizer):
                                         export_mesh=False,
                                         fix_colors=False):
 
-        for mode in self.mesh_dict.keys():
-            print('Current mode: ', mode)
+        # Create save path for current scene
+        save_path = os.path.join(self.save_path, self.sample_idx)
+        print(save_path)
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
 
-            # Create save path for current scene
-            save_path = os.path.join(self.save_path, self.sample_idx)
-            if not os.path.exists(save_path):
-                os.makedirs(save_path)
+        for mode in tqdm(self.mesh_dict.keys(), desc='Meshing Results', unit='mode'):
+
+            time.sleep(1)  # Simulating some processing time
+            print('\nCurrent mode: ', mode)
 
             if mode == 'pc':
                 print('Skipping pointcloud mode')
+                time.sleep(1)  # Simulating some processing time
+                print('-' * 100)
+                time.sleep(1)  # Simulating some processing time
                 continue
 
             # Get the mesh
@@ -310,3 +318,8 @@ class GroundUpVisualizerP3D(BaseVisualizer):
             if export_mesh:
                 print('Exporting mesh...')
                 self.export_mesh_p3d(mesh_name='mesh_{}'.format(mode), save_path=save_path, update_face_colors=False)
+
+            time.sleep(0.1)  # Simulating some processing time
+            print('-' * 100)
+            time.sleep(0.1)  # Simulating some processing time
+

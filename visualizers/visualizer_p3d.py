@@ -16,20 +16,24 @@ from pytorch3d.structures import Meshes
 from pytorch3d.renderer import Textures
 
 class GroundUpVisualizerP3D(BaseVisualizer):
-    def __init__(self, sample_path, dataset_root, scene_name, add_color_to_mesh=None, device='cpu'):
+    def __init__(self, sample_path, dataset_root, scene_name, add_color_to_mesh=None, device='cpu', verbose=True):
         super().__init__(sample_path, dataset_root, scene_name)
+        self.verbose = verbose
+        
         self.device = self.get_device(device)
         self.masks = self.move_to_device(self.masks)
         self.cameras = self.parse_path_and_read_cameras()
         self.add_color_to_mesh = add_color_to_mesh
         self.mesh_generator = BuildingMeshGenerator(use_color=add_color_to_mesh, mask_color=self.masks, apply_dilation_mask=False)
 
+        
     def get_device(self, device_name):
         # Set device
         os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
         os.environ["CUDA_VISIBLE_DEVICES"] = '0' if device_name=='cuda' else '-1'
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        print('Device:', device)
+        if self.verbose:
+            print('Device:', device)
         return device
 
     def move_to_device(self, data):
@@ -57,20 +61,23 @@ class GroundUpVisualizerP3D(BaseVisualizer):
             K[1] *= image_size[0]/ self.orig_image_size[1]
         return K
 
-    def parse_path_and_read_cameras(self):
 
+    def parse_path_and_read_cameras(self):
         # Get paths for cam_td, cam_p, K_td, K_p
-        path_cam_perspective = os.path.join(self.dataset_root, 'Camera', 'camera','campose_raw_{}.npz'.format(self.sample_idx))
+        path_cam_perspective = os.path.join(self.dataset_root, 'Camera', 'camera', 'campose_raw_{}.npz'.format(self.sample_idx))
         path_cam_topdown = os.path.join(self.dataset_root, 'Camera_Top_Down', 'camera', 'campose_raw_{}.npz'.format(self.sample_idx))
         path_K_perspective = os.path.join(self.dataset_root, 'cam_K.npy')
         path_K_topdown = os.path.join(self.dataset_root, 'cam_K_td.npy')
 
         # Get cameras and convert to Pytorch3D convention
-        cam_perspective = np.load(path_cam_perspective)['data']
-        cam_topdown = np.load(path_cam_topdown)['data']
+        cam_perspective_raw = np.load(path_cam_perspective)['data']
+        cam_topdown_raw = np.load(path_cam_topdown)['data']
 
-        cam_perspective = load_camera(cam_perspective, cam_type='Camera')
-        cam_topdown = load_camera(cam_topdown, cam_type='Camera_Top_Down')
+        R_cv, T_cv, cam_T_world = self.from_blender_toWorld_to_OpenCV_worldTocam(blender_matrix_world=cam_perspective_raw, is_camera=True)
+        cam_T_world = cam_T_world.astype(np.float32)
+
+        cam_perspective = load_camera(cam_perspective_raw.copy(), cam_type='Camera')
+        cam_topdown = load_camera(cam_topdown_raw.copy(), cam_type='Camera_Top_Down')
 
         # Get camera intrinsics K_td, invK_td, K_p, invK_p
         K_p = np.load(path_K_perspective).astype(np.float32)
@@ -78,9 +85,44 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         invK_p = np.linalg.inv(K_p)
         invK_td = np.linalg.inv(K_td)
 
-        return {'cam_perspective': cam_perspective, 'cam_topdown': cam_topdown,
+        return {'cam_T_world': cam_T_world, # opencv 
+                'cam_perspective': cam_perspective, 'cam_topdown': cam_topdown, # Pytorch3D
                 'K_p': K_p, 'K_td': K_td,
                 'invK_p': invK_p, 'invK_td': invK_td}
+
+
+    def from_blender_toWorld_to_OpenCV_worldTocam(self, blender_matrix_world, is_camera=False):
+        # 1. To satisfy both camera and other objects, the transformation matrix from Blender to OpenCV is the following:
+        R_BlenderView_to_OpenCVView = np.diag([1 if is_camera else -1, -1, -1])
+
+        # 2. From Blender get the world transformation matrix (to_world - Blender Global) by doing obj.matrix_world() then decompose to location and rotation
+        location = blender_matrix_world[:3, -1]
+        rotation = blender_matrix_world[:3, :3]
+        
+        trans = np.eye(4)
+        trans[:3, :3] = R_BlenderView_to_OpenCVView
+        
+        world_T_cam = blender_matrix_world @ trans
+        
+        cam_T_world = np.linalg.inv(world_T_cam)
+
+        # cam_T_world = trans @ blender_extrinsics
+        
+        # # 3. Transform from Blender Global orientation to Blender View orientation by transposing which means inversion
+        # R_BlenderView = rotation.T
+
+        # # 4. Apply Blender View rotation to the location (multiply by -1 for the inversion effect of inverting a non-square image)
+        # T_BlenderView = -1 * R_BlenderView @ location
+
+        # # 5. Transform from Blender View orientation to OpenCV View orientation:
+        # R_OpenCV = R_BlenderView_to_OpenCVView @ R_BlenderView
+        # T_OpenCV = R_BlenderView_to_OpenCVView @ T_BlenderView
+
+        # # this is now the world_to_cam transformation - extrinsics
+        # RT_cv = np.concatenate((R_OpenCV, T_OpenCV[:, None]), axis=1)
+        # world2cam_cv = np.concatenate((RT_cv, np.array([[0, 0, 0, 1]])), axis=0)
+        
+        return None, None, cam_T_world
 
     def find_camera_bounds_world_3d(self):
 
@@ -113,7 +155,8 @@ class GroundUpVisualizerP3D(BaseVisualizer):
     
     def find_mesh_world_coordinates_3d(self, mode='gt'):
 
-        print('Generating mesh...')
+        if self.verbose:
+            print('Generating mesh...')
         
         threshold = 10000
         depth_pixels_values = self.data[mode][self.data[mode] < threshold][:,None]
@@ -197,7 +240,8 @@ class GroundUpVisualizerP3D(BaseVisualizer):
 
     def render_scene(self, image_size=(256, 256), offset=(0, 0, 0)):
 
-        print('Rendering scene...')
+        if self.verbose:
+            print('Rendering scene...')
 
         # Create pytorch3D cameras
         K = torch.from_numpy(self.cameras['K_p']).to(self.device).clone()
@@ -258,7 +302,29 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         # mesh_with_color = export_obj(mesh_trimesh, include_color=True, include_normals=True)
         # mesh_with_color.export(filename, file_type='obj', include_color=True)
 
+    def get_trimesh(self, update_face_colors=True):
+        
+        mesh_pytorch3d = self.mesh
 
+
+        if update_face_colors:
+            target_color_value = np.array([98, 227, 132])/ 255.0
+
+            # Update vertex colors based on the target color
+            mesh_pytorch3d = update_vertex_colors(mesh_pytorch3d, target_color_value)
+
+        # Convert PyTorch3D mesh to trimesh
+        verts_np = mesh_pytorch3d.verts_packed().detach().cpu().numpy()
+        faces_np = mesh_pytorch3d.faces_packed().detach().cpu().numpy()
+        vertex_colors_np = mesh_pytorch3d.textures._verts_features_padded.detach().cpu().numpy()
+        vertex_colors_np =(vertex_colors_np * 255.0).astype(np.uint8)
+
+        mesh_trimesh = trimesh.Trimesh(vertices=verts_np, faces=faces_np, vertex_colors=vertex_colors_np)
+        mesh_trimesh.visual.vertex_colors = vertex_colors_np
+        
+        trimesh.repair.fix_normals(mesh_trimesh, multibody=False)
+        
+        return mesh_trimesh
 
 
 

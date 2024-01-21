@@ -1,12 +1,12 @@
-from typing import Any, Optional
+from typing import Any, Dict, Optional, Tuple
 import numpy as np
 import torch
+import torch.jit as jit
 from torch import Tensor
+import open3d as o3d
 
-class Project3D(torch.nn.module):
-    """
-    Layer that projects 3D points into the 2D camera
-    """
+class Project3D(torch.nn.Module):
+    """Layer that projects 3D points into the 2D camera"""
 
     def __init__(self, eps: float = 1e-8):
         super().__init__()
@@ -30,7 +30,57 @@ class Project3D(torch.nn.module):
         pix_coords_b2N = cam_points_b3N[:, :2] * scale
 
         return torch.cat([pix_coords_b2N, depth_b1N], dim=1)
-    
+
+
+@torch.jit.script
+def to_homogeneous(input_tensor: Tensor, dim: int = 0) -> Tensor:
+    """
+    Converts tensor to homogeneous coordinates by adding ones to the specified 
+    dimension
+    """
+    ones = torch.ones_like(input_tensor.select(dim, 0).unsqueeze(dim))
+    output_bkN = torch.cat([input_tensor, ones], dim=dim)
+    return output_bkN
+
+class BackprojectDepth(jit.ScriptModule):
+    """
+    Layer that projects points from 2D camera to 3D space. The 3D points are 
+    represented in homogeneous coordinates.
+    """
+
+    def __init__(self, height: int, width: int):
+        super().__init__()
+
+        self.height = height
+        self.width = width
+
+        xx, yy = torch.meshgrid(
+                            torch.arange(self.width), 
+                            torch.arange(self.height), 
+                            indexing='xy',
+                        )
+        pix_coords_2hw = torch.stack((xx, yy), axis=0) + 0.5
+
+        pix_coords_13N = to_homogeneous(
+                                pix_coords_2hw,
+                                dim=0,
+                            ).flatten(1).unsqueeze(0)
+
+        # make these tensors into buffers so they are put on the correct GPU 
+        # automatically
+        self.register_buffer("pix_coords_13N", pix_coords_13N)
+
+    @jit.script_method
+    def forward(self, depth_b1hw: Tensor, invK_b44: Tensor) -> Tensor:
+        """ 
+        Backprojects spatial points in 2D image space to world space using 
+        invK_b44 at the depths defined in depth_b1hw. 
+        """
+        cam_points_b3N = torch.matmul(invK_b44[:, :3, :3], self.pix_coords_13N)
+        cam_points_b3N = depth_b1hw.flatten(start_dim=2) * cam_points_b3N
+        cam_points_b4N = to_homogeneous(cam_points_b3N, dim=1)
+        return cam_points_b4N
+
 class SimpleVolume:
     
     """Class for housing and data handling Volumes. This class assumes
@@ -336,3 +386,78 @@ class VisibilityAggregator:
             # Reshape the valid mask to the volume's shape
             valid_points_hwd = valid_points_1N.view(self.volume.values_hwd.shape)
             self.volume.values_hwd[valid_points_hwd] = 1.0
+            
+def compute_point_cloud_metrics(
+    gt_pcd: o3d.geometry.PointCloud,
+    pred_pcd: o3d.geometry.PointCloud,
+    max_dist: float = 1.0,
+    dist_threshold: float = 0.05,
+    visible_pred_indices: Optional[list[int]] = None,
+) -> Tuple[Dict[str, float], np.ndarray, np.ndarray]:
+    """
+    Compute metrics for a predicted and gt point cloud.
+
+    If the predicted point cloud is empty, all the lower-is-better metrics will be set to max_dist
+    and all the higher-is-better metrics to 0.
+
+    Args:
+        gt_pcd (o3d.geometry.PointCloud): gt point cloud.
+        pred_pcd (o3d.geometry.PointCloud): predicted point cloud, will be compared to gt_pcd.
+        max_dist (float, optional): Maximum distance to clip distances to in meters.
+            Defaults to 1.0.
+        dist_threshold (float, optional): Distance threshold to use for precision
+            and recall in meters. Defaults to 0.05.
+        visible_pred_indices (list[int], optional): Indices of the predicted points that are
+            visible in the scene. Defaults to None. When not None will be used to filter out
+            predicted points when computing pred to gt.
+
+    Returns:
+        dict[str, float]: Metrics for this point cloud comparison.
+    """
+    metrics: Dict[str, float] = {}
+
+    if len(pred_pcd.points) == 0:
+        metrics["acc↓"] = max_dist
+        metrics["compl↓"] = max_dist
+        metrics["chamfer↓"] = max_dist
+        metrics["precision↑"] = 0.0
+        metrics["recall↑"] = 0.0
+        metrics["f1_score↑"] = 0.0
+        distances_pred2gt = torch.zeros([])
+        distances_gt2pred = torch.zeros(len(gt_pcd.points))
+        return metrics, distances_pred2gt, distances_gt2pred
+
+    # find nearest neighbors
+    distances_gt2pred = torch.tensor(gt_pcd.compute_point_cloud_distance(pred_pcd))
+
+    # only use the visibility masks when computing pred to gt distances
+    if visible_pred_indices is not None:
+        pred_pcd = pred_pcd.select_by_index(visible_pred_indices)
+        
+    distances_pred2gt = torch.tensor(pred_pcd.compute_point_cloud_distance(gt_pcd))
+
+    # accuracy
+    metrics["acc↓"] = float(torch.mean(distances_pred2gt))
+
+    # completion
+    metrics["compl↓"] = float(torch.mean(distances_gt2pred))
+
+    # chamfer distance
+    metrics["chamfer↓"] = float(0.5 * (metrics["acc↓"] + metrics["compl↓"]))
+
+    # precision
+    metrics["precision↑"] = float((distances_pred2gt <= dist_threshold).float().mean())
+
+    # recall
+    metrics["recall↑"] = float((distances_gt2pred <= dist_threshold).float().mean())
+
+    # F1 score
+    # catch the edge case where both precision and recall are 0
+    if metrics["precision↑"] + metrics["recall↑"] > 0.0:
+        metrics["f1_score↑"] = (2 * metrics["precision↑"] * metrics["recall↑"]) / (
+            metrics["precision↑"] + metrics["recall↑"]
+        )
+    else:
+        metrics["f1_score↑"] = 0.0
+
+    return metrics, distances_pred2gt, distances_gt2pred

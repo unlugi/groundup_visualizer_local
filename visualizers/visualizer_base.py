@@ -1,7 +1,11 @@
 import os
+from pathlib import Path
 import numpy as np
 import torch
 import PIL.Image as Image
+import cv2
+
+os.environ["OPENCV_IO_ENABLE_OPENEXR"]="1"
 
 class BaseVisualizer:
     def __init__(self, sample_path, dataset_root, scene_name=None):
@@ -13,6 +17,8 @@ class BaseVisualizer:
         self.data = self.parse_path_and_read_data()
         self.cameras = self.parse_path_and_read_cameras()
         self.masks = self.parse_path_and_read_segmentation()
+        
+        self.gt_pers_depth = self.load_gt_pers_depths()
 
     def parse_path_and_read_cameras(self):
         # Renderer specific
@@ -32,6 +38,23 @@ class BaseVisualizer:
         pred = np.load(path_pred)
 
         return {'gt': gt, 'proj': proj, 'pred': pred}
+
+    def load_gt_pers_depths(self):
+        perspective_depth_path = Path(self.dataset_root) / "Camera" / "depth" / "depth_{}.exr0001.exr".format(self.sample_idx)
+
+        depth = cv2.imread(str(perspective_depth_path), cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
+        assert depth is not None
+        
+        depth = depth[..., 2]
+        # Get the float valid mask
+        min_valid_depth=0.01
+        max_valid_depth=4.0
+        mask_b = ((depth >= min_valid_depth)  & (depth < max_valid_depth))
+        
+        # set invalids to nan or something else (sky is 6555555 in .exr files)
+        depth[~mask_b] = torch.tensor(np.nan)
+        
+        return depth
 
     def parse_path_and_read_segmentation(self):
         # Get paths for cam_td, cam_p, K_td, K_p

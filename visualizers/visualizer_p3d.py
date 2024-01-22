@@ -129,11 +129,11 @@ class GroundUpVisualizerP3D(BaseVisualizer):
 
         # Get camera intrinsics and extrinsics
         Kinv_td = torch.from_numpy(self.cameras['invK_td']).to(self.device)
-        extrinsics_RT_td = torch.from_numpy(self.cameras['cam_topdown']['camera_pc']).to(self.device)
+        pose = torch.from_numpy(self.cameras['cam_topdown']['camera_pc']).to(self.device)
 
         # Back-project to 3D world coordinates
         coords_cam = Kinv_td @ corners_ground_uv1.T
-        corners_ground_xyz = extrinsics_RT_td.inverse() @ coords_cam
+        corners_ground_xyz = pose @ coords_cam
         corners_ground_xyz = corners_ground_xyz.type(torch.float32) # xzy?
         corners_ground_xyz = corners_ground_xyz[:3, :].T # 4X3
 
@@ -167,20 +167,20 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         Kinv_td = torch.from_numpy(self.cameras['invK_td']).to(self.device)
         pose = torch.from_numpy(self.cameras['cam_topdown']['camera_pc']).to(self.device)
 
-        # Back-project to 3D world coordinates
-        vertices_cam = Kinv_td @ vertices_uv1.T
-        # vertices_xyz = extrinsics_RT_td.inverse() @ vertices_cam
-        vertices_xyz = pose @ vertices_cam
-        vertices_xyz = vertices_xyz.type(torch.float32) # xzy?
-        vertices_xyz = vertices_xyz[:3, :].T # 4X3
+        # # Back-project to 3D world coordinates
+        # vertices_cam = Kinv_td @ vertices_uv1.T
+        # # vertices_xyz = extrinsics_RT_td.inverse() @ vertices_cam
+        # vertices_xyz = pose @ vertices_cam
+        # vertices_xyz = vertices_xyz.type(torch.float32) # xzy?
+        # vertices_xyz = vertices_xyz[:3, :].T # 4X3
         
-        # depth_b1hw = torch.tensor(self.data[mode][None, None]).to(self.device)
-        # depth_b1hw += offset_ground + (100.0 - 5.0) 
-        # backprojector = BackprojectDepth(height=256, width=256)
-        # backprojector = backprojector.to(self.device)
-        # points_14N = backprojector(depth_b1hw, Kinv_td.unsqueeze(0))
-        # points_14N = pose.unsqueeze(0) @ points_14N
-        # vertices_xyz = points_14N.squeeze(0)[:3, :].T
+        depth_b1hw = torch.tensor(self.data[mode][None, None]).to(self.device)
+        depth_b1hw += offset_ground + (100.0 - 5.0) 
+        backprojector = BackprojectDepth(height=256, width=256)
+        backprojector = backprojector.to(self.device)
+        points_14N = backprojector(depth_b1hw, Kinv_td.unsqueeze(0))
+        points_14N = pose.unsqueeze(0) @ points_14N
+        vertices_xyz = points_14N.squeeze(0)[:3, :].T
 
         return vertices_xyz
 
@@ -320,6 +320,4 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         trimesh.repair.fix_normals(mesh_trimesh, multibody=False)
         
         return mesh_trimesh
-
-
 

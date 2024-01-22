@@ -14,3 +14,6 @@ utils/__pycache__/*.pyc
 visualizers/__pycache__/*
 visualizers/__pycache__
 visualizers/__pycache__/*.pyc
+utils/__pycache__/*.pyc
+utils/__pycache__/
+utils/__pycache__

@@ -5,13 +5,19 @@ import torch
 import PIL.Image as Image
 import trimesh
 from tqdm import tqdm
+import cv2
+os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
+
+from pytorch3d.structures import Pointclouds
+from pytorch3d.io import IO
 
 from trimesh.exchange.obj import export_obj
 
 from .visualizer_base import BaseVisualizer
 from utils.camera_utils import load_camera
 from utils.meshing_v2_utils import BuildingMeshGenerator, \
-                                   update_vertex_colors, update_vertex_colors_fast, update_vertex_colors_fast_padding
+                                   update_vertex_colors, update_vertex_colors_fast, update_vertex_colors_fast_padding, \
+                                   get_xy_depth_homogeneous_coordinates_bs1_vis
 from utils.p3d_utils import define_camera, mesh_renderer
 
 from pytorch3d.structures import Meshes
@@ -88,6 +94,40 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         return {'cam_perspective': cam_perspective, 'cam_topdown': cam_topdown,
                 'K_p': K_p, 'K_td': K_td,
                 'invK_p': invK_p, 'invK_td': invK_td}
+
+
+
+    def parse_path_and_read_data(self):
+        # Get paths for gt, proj, pred (depths) + sketch_td, sketch_p # TODO: sketch_td, sketch_p later
+        path_gt = self.sample_path
+        path_proj = self.sample_path.replace('gt.npy', 'proj.npy')
+        path_pred = self.sample_path.replace('gt.npy', 'pred.npy')
+
+        # Read data
+        gt = np.load(path_gt)
+        proj = np.load(path_proj)
+        pred = np.load(path_pred)
+        pred_baseline = None
+
+        if self.sample_baseline:
+            path_baseline = self.sample_baseline
+            pred_baseline = np.load(path_baseline)
+
+
+        # Hacking perspective depths
+        path_gt_perspective = os.path.join(self.dataset_root, 'Camera', 'depth',
+                                        "depth_{}.exr0001.exr".format(self.sample_idx))
+
+        gt_perspective = cv2.imread(path_gt_perspective, cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)[..., 2]
+
+
+        return {'gt': gt,
+                'proj': proj,
+                'pred': pred,
+                'pred_baseline': pred_baseline,
+                'gt_perspective': gt_perspective,
+                }
+
 
     def find_camera_bounds_world_3d(self):
 
@@ -279,6 +319,98 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         # mesh_with_color.export(filename, file_type='obj', include_color=True)
 
 
+    def get_pointcloud_depth_perspective_in_world_coordinates(self, mode='gt', is_save=False,
+                                                              path_to_save=None, minmax_valid_depth=(0.01, 4.0)):
+
+        depth_map_perspective = self.data['gt_perspective'].copy()
+        depth_map_perspective = torch.from_numpy(depth_map_perspective).to(self.device).unsqueeze(0)
+
+        # Get the float valid mask
+        mask_for_valid_depth = ((depth_map_perspective >= minmax_valid_depth[0])
+                                & (depth_map_perspective < minmax_valid_depth[1]))
+        depth_map_perspective[~mask_for_valid_depth] = torch.tensor(np.nan)
+
+
+        # UV coordinates of the depth map - [uv1]
+        depth_pixels_2d_homogeneous, foreground_mask = get_xy_depth_homogeneous_coordinates_bs1_vis(depth_map_perspective,
+                                                                                      mask_for_valid_depth,
+                                                                                      )
+
+        # Get 2D homogeneous coordinates from depth pixels
+        # coords_homogeneous_uv1 = depth_pixels_2d_homogeneous.unsqueeze(0)
+        coords_homogeneous_uv1 = depth_pixels_2d_homogeneous
+
+        # Get camera intrinsics and extrinsics
+        Kinv = self.cameras['invK_p'].copy()
+        Kinv = torch.from_numpy(Kinv).type(torch.float32).to(self.device)
+        extrinsics_RT_td = self.cameras['cam_perspective']['camera_pc'].copy()
+        extrinsics_RT_td = torch.from_numpy(extrinsics_RT_td).type(torch.float32).to(self.device)
+
+        # Backproject to 3d
+        coords_cam = Kinv @ coords_homogeneous_uv1.T
+        pts3D_topdown = extrinsics_RT_td.inverse() @ coords_cam
+
+        # pts3D_topdown = pts3D_topdown.type(torch.float32)
+
+        # pts3D_topdown_ = pts3D_topdown[:3, :].view(3, 256, 256)
+        # pts3D_topdown_ = pts3D_topdown_[:, foreground_mask]
+
+        point_cloud_td = Pointclouds(points=pts3D_topdown[:3, :].T[None, ...])
+
+        if is_save:
+            filename_pc = os.path.join(path_to_save, 'pc_{0}_{1}.ply'.format(mode, self.sample_idx))
+            IO().save_pointcloud(point_cloud_td, filename_pc, colors_as_uint8=False)
+
+        return point_cloud_td
+
+
+
+    # def mesh_and_render_all_modes(self, image_size=(256, 256),
+    #                                     light_offset=(-3.0, 0.0, 4.0),
+    #                                     render_scene=False,
+    #                                     export_mesh=False,
+    #                                     fix_colors=False):
+    #
+    #     # Create save path for current scene
+    #     save_path = os.path.join(self.save_path, self.sample_idx)
+    #     print(save_path)
+    #     if not os.path.exists(save_path):
+    #         os.makedirs(save_path)
+    #
+    #     for mode in tqdm(self.mesh_dict.keys(), desc='Meshing Results', unit='mode'):
+    #
+    #         time.sleep(1)  # Simulating some processing time
+    #         print('\nCurrent mode: ', mode)
+    #
+    #         if mode == 'pc':
+    #             print('Skipping pointcloud mode')
+    #             time.sleep(1)  # Simulating some processing time
+    #             print('-' * 100)
+    #             time.sleep(1)  # Simulating some processing time
+    #             continue
+    #
+    #         # Get the mesh
+    #         print('Obtaining 3D mesh...')
+    #         self.get_mesh_in_world_coordinates(mode, update_face_colors=fix_colors)
+    #
+    #         if render_scene:
+    #             print('Rendering scene...')
+    #             # Render the scene with the current mesh mode
+    #             rendered_image = self.render_scene(image_size=image_size, offset=light_offset)
+    #             # Save the rendered image
+    #             path_render = os.path.join(save_path, "render_{}_{}.png".format(mode, self.sample_idx))
+    #             rendered_image.save(path_render, 'PNG')
+    #
+    #         if export_mesh:
+    #             print('Exporting mesh...')
+    #             self.export_mesh_p3d(mesh_name='mesh_{}'.format(mode), save_path=save_path, update_face_colors=False)
+    #
+    #         time.sleep(0.1)  # Simulating some processing time
+    #         print('-' * 100)
+    #         time.sleep(0.1)  # Simulating some processing time
+
+
+
     def mesh_and_render_all_modes(self, image_size=(256, 256),
                                         light_offset=(-3.0, 0.0, 4.0),
                                         render_scene=False,
@@ -297,10 +429,10 @@ class GroundUpVisualizerP3D(BaseVisualizer):
             print('\nCurrent mode: ', mode)
 
             if mode == 'pc':
-                print('Skipping pointcloud mode')
-                time.sleep(1)  # Simulating some processing time
-                print('-' * 100)
-                time.sleep(1)  # Simulating some processing time
+                print('Generating 3D pointcloud...')
+                self.get_pointcloud_depth_perspective_in_world_coordinates(mode='gt',
+                                                                           is_save=True,
+                                                                           path_to_save=save_path)
                 continue
 
             # Get the mesh

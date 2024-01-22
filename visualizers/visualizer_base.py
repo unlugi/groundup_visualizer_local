@@ -72,3 +72,4 @@ class BaseVisualizer:
         return {'mask_ground': mask_ground,
                 'mask_building': mask_building,
                 'segmap_topdown': segmap_topdown }
+

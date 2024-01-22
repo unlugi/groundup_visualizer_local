@@ -602,3 +602,19 @@ def update_vertex_colors_fast_padding(mesh, target_color):
 
 
 
+def get_xy_depth_homogeneous_coordinates_bs1_vis(depth_map, foreground_mask):
+    # Get foreground pixels xy and values depth_pixels_2d_homogeneous
+
+    depth_pixels_values = depth_map[foreground_mask][:, None]
+    depth_pixels_xy = torch.nonzero(~torch.isnan(depth_map), as_tuple=True)[1:]
+    depth_pixels_xy = torch.stack(list(depth_pixels_xy), dim=1)
+
+    # depth_pixels_2d_homogeneous = [z*x z*y z*1 1]
+    depth_pixels_2d_homogeneous = torch.concat( (depth_pixels_values * depth_pixels_xy,
+                                                 depth_pixels_values,
+                                                 torch.ones_like(depth_pixels_values)), dim=1)
+
+    return depth_pixels_2d_homogeneous, foreground_mask
+
+
+

@@ -88,7 +88,7 @@ def load_camera(camera_pose, cam_type='Camera', topdown_depth_offset=100.0):
     RT_ = np.concatenate((camera_renderer_R, camera_renderer_T[:, None]), axis=1)
     camera_renderer_RT = np.concatenate((RT_, np.array([[0, 0, 0, 1]])), axis=0)
 
-    # Get Matrices for back-projecting depth maps to 3D point clouds (Blender2Pytorch3D)
+    # Get Matrices for back-projecting depth maps to 3D point clouds (Blender2Pytorch3D) # TODO: check if this is correct
     camera_point_cloud_R, camera_point_cloud_T = convert_camera_blender_2_pytorch3d_backproject_test(camera_pose)
     RT_pc = np.concatenate((camera_point_cloud_R.T, camera_point_cloud_T[:, None]), axis=1)
     camera_pc_RT = np.concatenate((RT_pc, np.array([[0, 0, 0, 1]])), axis=0)  # extrinsics

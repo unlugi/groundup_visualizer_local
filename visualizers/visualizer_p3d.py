@@ -6,6 +6,8 @@ import PIL.Image as Image
 import trimesh
 from trimesh.exchange.obj import export_obj
 
+from utils.mesh_metrics_utils import BackprojectDepth
+
 from .visualizer_base import BaseVisualizer
 from utils.camera_utils import load_camera
 from utils.meshing_v2_utils import BuildingMeshGenerator, \
@@ -73,7 +75,7 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         cam_perspective_raw = np.load(path_cam_perspective)['data']
         cam_topdown_raw = np.load(path_cam_topdown)['data']
 
-        R_cv, T_cv, cam_T_world = self.from_blender_toWorld_to_OpenCV_worldTocam(blender_matrix_world=cam_perspective_raw, is_camera=True)
+        _, _, cam_T_world = self.from_blender_toWorld_to_OpenCV_worldTocam(blender_matrix_world=cam_perspective_raw, is_camera=True)
         cam_T_world = cam_T_world.astype(np.float32)
 
         cam_perspective = load_camera(cam_perspective_raw.copy(), cam_type='Camera')
@@ -105,22 +107,6 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         world_T_cam = blender_matrix_world @ trans
         
         cam_T_world = np.linalg.inv(world_T_cam)
-
-        # cam_T_world = trans @ blender_extrinsics
-        
-        # # 3. Transform from Blender Global orientation to Blender View orientation by transposing which means inversion
-        # R_BlenderView = rotation.T
-
-        # # 4. Apply Blender View rotation to the location (multiply by -1 for the inversion effect of inverting a non-square image)
-        # T_BlenderView = -1 * R_BlenderView @ location
-
-        # # 5. Transform from Blender View orientation to OpenCV View orientation:
-        # R_OpenCV = R_BlenderView_to_OpenCVView @ R_BlenderView
-        # T_OpenCV = R_BlenderView_to_OpenCVView @ T_BlenderView
-
-        # # this is now the world_to_cam transformation - extrinsics
-        # RT_cv = np.concatenate((R_OpenCV, T_OpenCV[:, None]), axis=1)
-        # world2cam_cv = np.concatenate((RT_cv, np.array([[0, 0, 0, 1]])), axis=0)
         
         return None, None, cam_T_world
 
@@ -179,13 +165,22 @@ class GroundUpVisualizerP3D(BaseVisualizer):
 
         # Get camera intrinsics and extrinsics
         Kinv_td = torch.from_numpy(self.cameras['invK_td']).to(self.device)
-        extrinsics_RT_td = torch.from_numpy(self.cameras['cam_topdown']['camera_pc']).to(self.device)
+        pose = torch.from_numpy(self.cameras['cam_topdown']['camera_pc']).to(self.device)
 
         # Back-project to 3D world coordinates
         vertices_cam = Kinv_td @ vertices_uv1.T
-        vertices_xyz = extrinsics_RT_td.inverse() @ vertices_cam
+        # vertices_xyz = extrinsics_RT_td.inverse() @ vertices_cam
+        vertices_xyz = pose @ vertices_cam
         vertices_xyz = vertices_xyz.type(torch.float32) # xzy?
         vertices_xyz = vertices_xyz[:3, :].T # 4X3
+        
+        # depth_b1hw = torch.tensor(self.data[mode][None, None]).to(self.device)
+        # depth_b1hw += offset_ground + (100.0 - 5.0) 
+        # backprojector = BackprojectDepth(height=256, width=256)
+        # backprojector = backprojector.to(self.device)
+        # points_14N = backprojector(depth_b1hw, Kinv_td.unsqueeze(0))
+        # points_14N = pose.unsqueeze(0) @ points_14N
+        # vertices_xyz = points_14N.squeeze(0)[:3, :].T
 
         return vertices_xyz
 

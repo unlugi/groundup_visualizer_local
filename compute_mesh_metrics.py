@@ -105,6 +105,7 @@ def compute_metrics_for_sample(
         # get projection matrices
         K_b44 = torch.from_numpy(gt_visualizer.fix_camera_intrinsics(gt_visualizer.cameras['K_p'].copy(), [1,1])).cuda().clone().unsqueeze(0)
         cam_T_world_b44 = torch.from_numpy(gt_visualizer.cameras['cam_T_world']).clone().cuda().unsqueeze(0)
+        world_T_cam_b44 = torch.inverse(cam_T_world_b44)
         
         
         depth_b1hw = torch.tensor(gt_visualizer.gt_pers_depth)[None, None].cuda()
@@ -116,16 +117,40 @@ def compute_metrics_for_sample(
             pcd_visibility_volume_save_path = Path(sample_save_path) / "pcd_visibility_volume.ply"
             o3d.io.write_point_cloud(str(pcd_visibility_volume_save_path), visibility_volume.to_point_cloud(threshold=0.5, num_points=100000))
             
-            # world_T_cam_b44 = torch.from_numpy(gt_visualizer.cameras['cam_perspective']['camera_pc']).clone().cuda().unsqueeze(0)
-            cam_T_world_b44 = torch.from_numpy(gt_visualizer.cameras['cam_T_world']).clone().cuda().unsqueeze(0)
-            world_T_cam_b44 = torch.inverse(cam_T_world_b44)
-            
+            world_T_cam_b44 = torch.from_numpy(gt_visualizer.cameras['cam_perspective']['camera_pc']).clone().cuda().unsqueeze(0)
             invK_b44 = torch.linalg.inv(torch.from_numpy(gt_visualizer.fix_camera_intrinsics(gt_visualizer.cameras['K_p'].copy(), [256,256])).cuda().clone().unsqueeze(0))
+            
+            mode = "gt"
+            depth_pixels_values = gt_visualizer.data[mode][gt_visualizer.data[mode] < 10000][:,None]
+
+            # offset if ground too low
+            max_depth = gt_visualizer.data[mode].max()
+            offset_ground = gt_visualizer.data['gt'].max() - gt_visualizer.data[mode].max()
+
+            depth_pixels_values = depth_pixels_values + offset_ground + (100.0 - 5.0) # TODO: hard-coded
+
+            depth_pixels_xy = np.argwhere(gt_visualizer.data[mode] < 10000)
+            vertices_uv1 = np.concatenate( [depth_pixels_values * depth_pixels_xy, 
+                                            depth_pixels_values, 
+                                            np.ones_like(depth_pixels_values)], axis=1).astype(np.float32)
+            vertices_uv1 = torch.from_numpy(vertices_uv1.astype(np.float32)).to(depth_b1hw.device)
+
+            # Get camera intrinsics and extrinsics
+            Kinv_td = torch.from_numpy(gt_visualizer.cameras['invK_td']).to(depth_b1hw.device)
+            pose = torch.from_numpy(gt_visualizer.cameras['cam_topdown']['camera_pc']).to(depth_b1hw.device)
+
+            # Back-project to 3D world coordinates
+            vertices_cam = Kinv_td @ vertices_uv1.T
+            # vertices_xyz = extrinsics_RT_td.inverse() @ vertices_cam
+            vertices_xyz = pose @ vertices_cam
+            vertices_xyz = vertices_xyz.type(torch.float32) # xzy?
+            vertices_xyz = vertices_xyz[:3, :].T # 4X3
+        
             backprojector = BackprojectDepth(width=256, height=256).cuda()
             points = backprojector(depth_b1hw, invK_b44)
             points = world_T_cam_b44 @ points
             pcd = o3d.geometry.PointCloud()
-            pcd.points = o3d.utility.Vector3dVector(points.squeeze().permute(1,0)[:, :3].cpu().numpy())
+            pcd.points = o3d.utility.Vector3dVector(vertices_xyz.cpu().numpy())#o3d.utility.Vector3dVector(points.squeeze().permute(1,0)[:, :3].cpu().numpy())
             o3d.io.write_point_cloud(str(Path(sample_save_path) / "backproj_pers.ply"), pcd)
         
         
@@ -190,13 +215,7 @@ def main(sample_paths, dataset_root, save_path, debug_dump=False, scene_name=Non
         json.dump(metrics, f, indent=4)
         
 
-"""
-1) read gt, proj, pred, sketch_td, sketch_p, cam_td, cam_p
-2) mesh gt
-3) mesh pred
-4) pc proj
-5) Render from cam_p
-"""
+
 @click.command()
 @click.option(
     "--dataset_path",

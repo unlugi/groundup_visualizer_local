@@ -24,7 +24,8 @@ from pytorch3d.structures import Meshes
 from pytorch3d.renderer import Textures
 
 class GroundUpVisualizerP3D(BaseVisualizer):
-    def __init__(self, sample_path, dataset_root, save_path, scene_name, samples_baseline, add_color_to_mesh=None, device='cpu'):
+    def __init__(self, sample_path, dataset_root, save_path, scene_name, samples_baseline,
+                 image_size, light_offset, add_color_to_mesh=None, device='cpu'):
         super().__init__(sample_path, dataset_root, save_path, scene_name,samples_baseline)
         self.device = self.get_device(device)
         self.masks = self.move_to_device(self.masks)
@@ -37,6 +38,11 @@ class GroundUpVisualizerP3D(BaseVisualizer):
                           # 'pc_gt': None,
                           # 'pc_pred_proj': None,
                           }
+        self.image_size = image_size
+        self.offset = light_offset
+
+        # Initialize the renderer once here!
+        self.renderer = self.initialize_p3d_renderer(image_size=self.image_size, offset=self.offset)
 
     def get_device(self, device_name):
         # Set device
@@ -96,6 +102,26 @@ class GroundUpVisualizerP3D(BaseVisualizer):
                 'K_p': K_p, 'K_td': K_td,
                 'invK_p': invK_p, 'invK_td': invK_td}
 
+    def initialize_p3d_renderer(self, image_size=(256, 256), offset=(0, 0, 0)):
+
+        # Create pytorch3D cameras
+        K = torch.from_numpy(self.cameras['K_p']).to(self.device).clone()
+        R_for_camera_perspective = self.cameras['cam_perspective']['camera_renderer'][:3, :3]
+        t_for_camera_perspective = self.cameras['cam_perspective']['camera_renderer'][:3, -1]
+
+        # Fix camera K
+        K = self.fix_camera_intrinsics(K, image_size)
+
+        # Define pytorch3D camera
+        cameras_perspective = define_camera(K[None, :, :],
+                                            image_size,
+                                            R_for_camera_perspective[None, ...],
+                                            t_for_camera_perspective[None, ...],
+                                            device=self.device)
+
+
+        renderer = mesh_renderer(cameras=cameras_perspective, imsize=image_size, device=self.device, offset=offset)
+        return renderer
 
 
     def parse_path_and_read_data(self):
@@ -233,8 +259,8 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         verts_transformed = self.find_mesh_world_coordinates_3d(mode=model_name)
 
         # Create a PyTorch3D Meshes object
-        self.mesh = Meshes(verts=[verts_transformed], faces=[faces], verts_normals=None, textures=textures)
-        # self.mesh_dict[model_name] = Meshes(verts=[verts_transformed], faces=[faces], verts_normals=[normals], textures=textures)
+        # self.mesh = Meshes(verts=[verts_transformed], faces=[faces], verts_normals=None, textures=textures)
+        self.mesh_dict[model_name] = Meshes(verts=[verts_transformed], faces=[faces], verts_normals=[normals], textures=textures)
 
 
         if update_face_colors:
@@ -244,39 +270,39 @@ class GroundUpVisualizerP3D(BaseVisualizer):
 
             start = time.time()
             # Update vertex colors based on the target color
-            self.mesh = update_vertex_colors_fast(self.mesh, target_color_value)
+            mesh = update_vertex_colors_fast(self.mesh, target_color_value)
 
             end = time.time()
             print('time it took:{} seconds '.format(end-start))
 
-        # Update mesh in mesh_dict
-        self.mesh_dict[model_name] = self.mesh # TODO: check this out
+            # Update mesh in mesh_dict
+            self.mesh_dict[model_name] = mesh
 
 
-    def render_scene(self, image_size=(256, 256), offset=(0, 0, 0)):
+    def render_scene(self, mode='gt'):
 
-        # Create pytorch3D cameras
-        K = torch.from_numpy(self.cameras['K_p']).to(self.device).clone()
-        R_for_camera_perspective = self.cameras['cam_perspective']['camera_renderer'][:3, :3]
-        t_for_camera_perspective = self.cameras['cam_perspective']['camera_renderer'][:3, -1]
-
-
-        # Fix camera K
-        K = self.fix_camera_intrinsics(K, image_size)
-
-        # Define pytorch3D camera
-        cameras_perspective = define_camera(K[None, :, :],
-                                            image_size,
-                                            R_for_camera_perspective[None, ...],
-                                            t_for_camera_perspective[None, ...],
-                                            device=self.device)
+        # # Create pytorch3D cameras
+        # K = torch.from_numpy(self.cameras['K_p']).to(self.device).clone()
+        # R_for_camera_perspective = self.cameras['cam_perspective']['camera_renderer'][:3, :3]
+        # t_for_camera_perspective = self.cameras['cam_perspective']['camera_renderer'][:3, -1]
+        #
+        #
+        # # Fix camera K
+        # K = self.fix_camera_intrinsics(K, image_size)
+        #
+        # # Define pytorch3D camera
+        # cameras_perspective = define_camera(K[None, :, :],
+        #                                     image_size,
+        #                                     R_for_camera_perspective[None, ...],
+        #                                     t_for_camera_perspective[None, ...],
+        #                                     device=self.device)
 
         # TODO: fix this
         # self.cameras_perspective_p3d = cameras_perspective.clone()
 
         # Render the scene
-        renderer_ = mesh_renderer( cameras=cameras_perspective, imsize=image_size, device=self.device, offset=offset)
-        perspective_render = renderer_(self.mesh)
+        # renderer_ = mesh_renderer( cameras=cameras_perspective, imsize=image_size, device=self.device, offset=offset)
+        perspective_render = self.renderer(self.mesh_dict[mode] )
         # perspective_render = renderer_(self.mesh_dict[mode])
 
 
@@ -295,7 +321,7 @@ class GroundUpVisualizerP3D(BaseVisualizer):
 
     def export_mesh_p3d(self, mesh_name, save_path, update_face_colors=True, mode='gt', export_p3d=False):
 
-        mesh_pytorch3d = self.mesh
+        mesh_pytorch3d = self.mesh_dict[mode]
         # mesh_pytorch3d = self.mesh_dict[mode] # TODO: check this out
 
         if update_face_colors:
@@ -411,9 +437,6 @@ class GroundUpVisualizerP3D(BaseVisualizer):
                                              znear=[0.01,],
                                                 zfar=[4.0,],)
 
-                                             # znear=torch.tensor([0.01]).to(self.device),
-                                             # zfar=torch.tensor([4.0]).to(self.device))
-
         image_pc = image_rendered[0, :].detach().cpu().numpy()
         image_pc = Image.fromarray((image_pc * 255).astype(np.uint8))
         image_pc= image_pc.convert('RGBA')
@@ -422,8 +445,7 @@ class GroundUpVisualizerP3D(BaseVisualizer):
 
 
 
-    def mesh_and_render_all_modes(self, image_size=(256, 256),
-                                        light_offset=(-3.0, 0.0, 4.0),
+    def mesh_and_render_all_modes(self,
                                         render_scene=False,
                                         export_mesh=False,
                                         fix_colors=False):
@@ -453,14 +475,15 @@ class GroundUpVisualizerP3D(BaseVisualizer):
             if render_scene:
                 print('Rendering scene...')
                 # Render the scene with the current mesh mode
-                rendered_image = self.render_scene(image_size=image_size, offset=light_offset)
+                rendered_image = self.render_scene(mode)
                 # Save the rendered image
                 path_render = os.path.join(save_path, "render_{}_{}.png".format(mode, self.sample_idx))
                 rendered_image.save(path_render, 'PNG')
 
             if export_mesh:
                 print('Exporting mesh...')
-                self.export_mesh_p3d(mesh_name='mesh_{}'.format(mode), save_path=save_path, update_face_colors=False)
+                self.export_mesh_p3d(mesh_name='mesh_{}'.format(mode), mode=mode,
+                                     save_path=save_path, update_face_colors=False)
 
             time.sleep(0.1)  # Simulating some processing time
             print('-' * 100)

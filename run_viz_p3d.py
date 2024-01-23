@@ -48,14 +48,15 @@ def main(run_cfg, add_mesh_color=True):
                                             add_color_to_mesh=add_mesh_color,
                                             device='cuda',
                                             samples_baseline=samples_hf[i],
+                                            image_size=image_size,
+                                            light_offset=(0.0, 0.0, 5.0)
                                             )
 
         # Generate the mesh and render all modes
-        gup_visualizer.mesh_and_render_all_modes(image_size=image_size,
+        gup_visualizer.mesh_and_render_all_modes(
                                                  render_scene=True,
                                                  export_mesh=True,
                                                  fix_colors=run_cfg["fix_mesh_colors"],
-                                                 light_offset=(0.0, 0.0, 5.0)
                                                  )
 
         print('done')

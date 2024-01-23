@@ -11,8 +11,8 @@ import bpy
 
 
 class GroundUpVisualizerBlender(GroundUpVisualizerP3D):
-    def __init__(self, sample_path, dataset_root, save_path, scene_name, samples_baseline, cfg_dict, add_color_to_mesh=None,
-                 device='cpu'):
+    def __init__(self, sample_path, dataset_root, save_path, scene_name, samples_baseline, cfg_dict,
+                 add_color_to_mesh=None, device='cpu'):
         super().__init__(sample_path, dataset_root, save_path, scene_name, samples_baseline)
         self.device = self.get_device(device)
         self.masks = self.move_to_device(self.masks)

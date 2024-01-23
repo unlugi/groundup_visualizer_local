@@ -221,9 +221,8 @@ class GroundUpVisualizerP3D(BaseVisualizer):
 
         # verts = torch.tensor(mesh_elevation.vertices.copy(), dtype=torch.float32).to(self.device)
         faces = torch.tensor(mesh_elevation.faces.copy(), dtype=torch.int64).to(self.device)
+        faces = torch.flip(faces, dims=[1])
         normals = torch.tensor(mesh_elevation.vertex_normals.copy(), dtype=torch.float32).to(self.device)
-
-        # faces = torch.flip(faces, dims=[1])
 
         # Initialize each vertex to be white
         # verts_rgb = 0.6 * torch.ones_like(verts)[None]
@@ -234,7 +233,7 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         verts_transformed = self.find_mesh_world_coordinates_3d(mode=model_name)
 
         # Create a PyTorch3D Meshes object
-        self.mesh = Meshes(verts=[verts_transformed], faces=[faces], verts_normals=[normals], textures=textures)
+        self.mesh = Meshes(verts=[verts_transformed], faces=[faces], verts_normals=None, textures=textures)
         # self.mesh_dict[model_name] = Meshes(verts=[verts_transformed], faces=[faces], verts_normals=[normals], textures=textures)
 
 

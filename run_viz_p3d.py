@@ -46,7 +46,7 @@ def main(run_cfg, add_mesh_color=True):
                                                  render_scene=True,
                                                  export_mesh=True,
                                                  fix_colors=run_cfg["fix_mesh_colors"],
-                                                 light_offset=(0.0, 0.0, 4.0)
+                                                 light_offset=(0.0, 0.0, 3.5)
                                                  )
 
         print('done')

@@ -64,9 +64,9 @@ def mesh_renderer(cameras, imsize, is_depth=False, bg_color_white=True, device='
     # Define a light source at the camera's position
     point_lights = PointLights(device=device,
                                location=((camera_position[0,0], camera_position[0,1], camera_position[0,2]) , ),
-                               # ambient_color=((0.6, 0.6, 0.6),),
-                               # diffuse_color=((0.4, 0.4, 0.4),),
-                               # specular_color=((0.1, 0.1, 0.1),),
+                               ambient_color=((0.6, 0.6, 0.6),),
+                               diffuse_color=((0.4, 0.4, 0.4),),
+                               specular_color=((0.1, 0.1, 0.1),),
 
                                # ambient_color=((0.95, 0.95, 1.0), ),
                                # diffuse_color=((0.4, 0.4, 0.4), ),

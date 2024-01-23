@@ -472,7 +472,7 @@ def update_vertex_colors_fast(mesh, target_color):
     # Get faces and vertex indices
     faces = mesh.faces_packed()
     verts = mesh.verts_packed()
-    # normals = mesh.faces_normals_packed()
+    normals = mesh.faces_normals_padded()
     vertex_colors = mesh.textures._verts_features_padded.squeeze(0)
     vertex_colors_new = vertex_colors.clone()
 

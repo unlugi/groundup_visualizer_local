@@ -270,7 +270,7 @@ class GroundUpVisualizerP3D(BaseVisualizer):
                                             device=self.device)
 
         # TODO: fix this
-        self.cameras_perspective_p3d = cameras_perspective.clone()
+        # self.cameras_perspective_p3d = cameras_perspective.clone()
 
         # Render the scene
         renderer_ = mesh_renderer( cameras=cameras_perspective, imsize=image_size, device=self.device, offset=offset)

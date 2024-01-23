@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # Step 1: Create and activate a conda environment
-conda create -n blender_vis python=3.10
+#conda create -n blender_vis_2 python=3.10
 
-source ~/miniconda3/etc/profile.d/conda.sh
-conda activate blender_vis
+#source ~/miniconda3/etc/profile.d/conda.sh
+#conda activate blender_vis_2
 
 # Step 2: Install bpy
 pip install bpy==3.4.0
@@ -23,6 +23,8 @@ pip install scikit-image matplotlib imageio plotly opencv-python
 
 # Step 7: Install pytorch3d
 conda install pytorch3d -c pytorch3d
+
+conda install -c bottler nvidiacub
 
 # Step 8: Install kornia
 pip install kornia

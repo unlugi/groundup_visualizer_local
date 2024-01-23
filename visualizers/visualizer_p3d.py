@@ -18,7 +18,7 @@ from utils.camera_utils import load_camera
 from utils.meshing_v2_utils import BuildingMeshGenerator, \
                                    update_vertex_colors, update_vertex_colors_fast, update_vertex_colors_fast_padding, \
                                    get_xy_depth_homogeneous_coordinates_bs1_vis
-from utils.p3d_utils import define_camera, mesh_renderer
+from utils.p3d_utils import define_camera, mesh_renderer, point_cloud_renderer
 
 from pytorch3d.structures import Meshes
 from pytorch3d.renderer import Textures
@@ -32,9 +32,10 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         self.add_color_to_mesh = add_color_to_mesh
         self.mesh_generator = BuildingMeshGenerator(use_color=add_color_to_mesh, mask_color=self.masks, apply_dilation_mask=False)
         self.mesh_dict = {'gt': None,
-                          'pc': None,
                           'pred': None,
                           'pred_baseline': None,
+                          # 'pc_gt': None,
+                          # 'pc_pred_proj': None,
                           }
 
     def get_device(self, device_name):
@@ -125,7 +126,7 @@ class GroundUpVisualizerP3D(BaseVisualizer):
                 'proj': proj,
                 'pred': pred,
                 'pred_baseline': pred_baseline,
-                'gt_perspective': gt_perspective,
+                'gt_p': gt_perspective,
                 }
 
 
@@ -169,7 +170,7 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         max_depth = self.data[mode].max()
         offset_ground = self.data['gt'].max() - self.data[mode].max()
 
-        depth_pixels_values = depth_pixels_values + offset_ground + (100.0 - 5.0) # TODO: hard-coded
+        depth_pixels_values = depth_pixels_values + offset_ground + (100.0 - 5.0) # TODO: hard-coded # TODO: BUG
 
         depth_pixels_xy = np.argwhere(self.data[mode] < threshold)
 
@@ -268,6 +269,9 @@ class GroundUpVisualizerP3D(BaseVisualizer):
                                             t_for_camera_perspective[None, ...],
                                             device=self.device)
 
+        # TODO: fix this
+        self.cameras_perspective_p3d = cameras_perspective.clone()
+
         # Render the scene
         renderer_ = mesh_renderer( cameras=cameras_perspective, imsize=image_size, device=self.device, offset=offset)
         perspective_render = renderer_(self.mesh)
@@ -287,11 +291,10 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         return image_w_bg
 
 
-    def export_mesh_p3d(self, mesh_name, save_path, update_face_colors=True, mode='gt'):
+    def export_mesh_p3d(self, mesh_name, save_path, update_face_colors=True, mode='gt', export_p3d=False):
 
         mesh_pytorch3d = self.mesh
         # mesh_pytorch3d = self.mesh_dict[mode] # TODO: check this out
-
 
         if update_face_colors:
             print("Fixing mesh colors...")
@@ -302,112 +305,118 @@ class GroundUpVisualizerP3D(BaseVisualizer):
             # Update vertex colors based on the target color
             mesh_pytorch3d = update_vertex_colors_fast(mesh_pytorch3d, target_color_value)
 
-        # Convert PyTorch3D mesh to trimesh
-        verts_np = mesh_pytorch3d.verts_packed().detach().cpu().numpy()
-        faces_np = mesh_pytorch3d.faces_packed().detach().cpu().numpy()
-        vertex_colors_np = mesh_pytorch3d.textures._verts_features_padded.detach().cpu().numpy()
-        vertex_colors_np =(vertex_colors_np * 255.0).astype(np.uint8)
-
-        mesh_trimesh = trimesh.Trimesh(vertices=verts_np, faces=faces_np, vertex_colors=vertex_colors_np)
-        mesh_trimesh.visual.vertex_colors = vertex_colors_np
-        trimesh.repair.fix_normals(mesh_trimesh, multibody=False)
-
-        # filename = os.path.join(save_path, "mesh_{}_{}.obj".format(mesh_name, self.sample_idx))
+        # file save path
         filename = os.path.join(save_path, mesh_name)
-        mesh_trimesh.export(filename+".obj", file_type='obj', include_color=True)
-        # mesh_with_color = export_obj(mesh_trimesh, include_color=True, include_normals=True)
-        # mesh_with_color.export(filename, file_type='obj', include_color=True)
+
+        if export_p3d:
+            IO().save_mesh(mesh_pytorch3d, filename+".obj", include_textures=True)
+
+        else: # trimesh
+            # Convert PyTorch3D mesh to trimesh
+            verts_np = mesh_pytorch3d.verts_packed().detach().cpu().numpy()
+            faces_np = mesh_pytorch3d.faces_packed().detach().cpu().numpy()
+            vertex_colors_np = mesh_pytorch3d.textures._verts_features_padded.detach().cpu().numpy()
+            vertex_colors_np =(vertex_colors_np * 255.0).astype(np.uint8)
+
+            mesh_trimesh = trimesh.Trimesh(vertices=verts_np, faces=faces_np, vertex_colors=vertex_colors_np)
+            mesh_trimesh.visual.vertex_colors = vertex_colors_np
+            trimesh.repair.fix_winding(mesh_trimesh)
+            trimesh.repair.fix_inversion(mesh_trimesh, multibody=False)
+            trimesh.repair.fix_normals(mesh_trimesh, multibody=False)
+
+            mesh_trimesh.export(filename+".obj", file_type='obj', include_color=True)
+            # mesh_with_color = export_obj(mesh_trimesh, include_color=True, include_normals=True)
+            # mesh_with_color.export(filename, file_type='obj', include_color=True)
 
 
     def get_pointcloud_depth_perspective_in_world_coordinates(self, mode='gt', is_save=False,
                                                               path_to_save=None, minmax_valid_depth=(0.01, 4.0)):
 
-        depth_map_perspective = self.data['gt_perspective'].copy()
-        depth_map_perspective = torch.from_numpy(depth_map_perspective).to(self.device).unsqueeze(0)
+        # Get correct depth map
+        if 'proj' in mode:
+            depth_map = self.data['proj'].copy() # depth offset
+            # Get the float valid mask
+            minmax_valid_depth = (0.01, 6)
+            mask_for_valid_depth = ((depth_map >= minmax_valid_depth[0])  # change valid_depth
+                                    & (depth_map < minmax_valid_depth[1]))
+            # offset ortho2perspective # offset if ground too low
+            max_depth = self.data['proj'].max()
+            offset_ground = self.data['gt'].max() - self.data['proj'].max()
 
-        # Get the float valid mask
-        mask_for_valid_depth = ((depth_map_perspective >= minmax_valid_depth[0])
-                                & (depth_map_perspective < minmax_valid_depth[1]))
-        depth_map_perspective[~mask_for_valid_depth] = torch.tensor(np.nan)
+            depth_map = depth_map + offset_ground + (100.0 - 5.0)  # TODO: BUG
+        else:
+            depth_map = self.data['gt_p'].copy()
+            # depth_map = self.data['gt_perspective'].copy()
+            # Get the float valid mask
+            minmax_valid_depth = (0.01, 4.0)
+            mask_for_valid_depth = ((depth_map >= minmax_valid_depth[0])  # change valid_depth
+                                    & (depth_map < minmax_valid_depth[1]))
 
+        # Get correct camera intrinsics and extrinsics
+        if 'proj' in mode:
+            Kinv = self.cameras['invK_td'].copy()
+            Kinv = torch.from_numpy(Kinv).type(torch.float32).to(self.device)
+            extrinsics_RT = self.cameras['cam_topdown']['camera_pc'].copy()  # world to camera
+            extrinsics_RT = torch.from_numpy(extrinsics_RT).type(torch.float32).to(self.device)
+        else:
+            Kinv = self.cameras['invK_p'].copy()
+            Kinv = torch.from_numpy(Kinv).type(torch.float32).to(self.device)
+            extrinsics_RT = self.cameras['cam_perspective']['camera_pc'].copy()  # world to camera
+            extrinsics_RT = torch.from_numpy(extrinsics_RT).type(torch.float32).to(self.device)
 
-        # UV coordinates of the depth map - [uv1]
-        depth_pixels_2d_homogeneous, foreground_mask = get_xy_depth_homogeneous_coordinates_bs1_vis(depth_map_perspective,
-                                                                                      mask_for_valid_depth,
+        # Convert to torch tensor
+        depth_map = torch.from_numpy(depth_map).to(self.device)
+        mask_for_valid_depth = torch.from_numpy(mask_for_valid_depth).to(self.device)
+
+        # Mask out invalid depth values
+        depth_map[~mask_for_valid_depth] = torch.tensor(np.nan)
+
+        # UV coordinates of the depth map - [u*1, v*d, d, 1] - 2D homogeneous coordinates from depth pixels
+        coords_homogeneous_uv1, foreground_mask = get_xy_depth_homogeneous_coordinates_bs1_vis(depth_map[None, ...],
+                                                                                      mask_for_valid_depth[None, ...],
                                                                                       )
 
-        # Get 2D homogeneous coordinates from depth pixels
-        # coords_homogeneous_uv1 = depth_pixels_2d_homogeneous.unsqueeze(0)
-        coords_homogeneous_uv1 = depth_pixels_2d_homogeneous
-
-        # Get camera intrinsics and extrinsics
-        Kinv = self.cameras['invK_p'].copy()
-        Kinv = torch.from_numpy(Kinv).type(torch.float32).to(self.device)
-        extrinsics_RT_td = self.cameras['cam_perspective']['camera_pc'].copy()
-        extrinsics_RT_td = torch.from_numpy(extrinsics_RT_td).type(torch.float32).to(self.device)
+        # # Get camera intrinsics and extrinsics
+        # Kinv = self.cameras['invK_p'].copy()
+        # Kinv = torch.from_numpy(Kinv).type(torch.float32).to(self.device)
+        # extrinsics_RT = self.cameras['cam_perspective']['camera_pc'].copy() # world to camera
+        # extrinsics_RT = torch.from_numpy(extrinsics_RT).type(torch.float32).to(self.device)
 
         # Backproject to 3d
         coords_cam = Kinv @ coords_homogeneous_uv1.T
-        pts3D_topdown = extrinsics_RT_td.inverse() @ coords_cam
+        pts3D = extrinsics_RT.inverse() @ coords_cam
 
-        # pts3D_topdown = pts3D_topdown.type(torch.float32)
+        # Colors
+        # colors = 0.3 * torch.ones_like((coords_homogeneous_uv1))[..., :3]
+        # colors = torch.ones_like(coords_homogeneous_uv1[..., :3]) * torch.tensor([1.0, 0.0, 0.0]).to(self.device)
+        colors = torch.ones_like(coords_homogeneous_uv1[..., :4]) * torch.tensor([1.0, 0.0, 0.0, 1.0]).to(self.device)
+        point_cloud = Pointclouds(points=pts3D[:3, :].T[None, ...], features=colors[None, ...])
+        # point_cloud = Pointclouds(points=pts3D[:3, :].T[None, ...])
 
-        # pts3D_topdown_ = pts3D_topdown[:3, :].view(3, 256, 256)
-        # pts3D_topdown_ = pts3D_topdown_[:, foreground_mask]
-
-        point_cloud_td = Pointclouds(points=pts3D_topdown[:3, :].T[None, ...])
 
         if is_save:
-            filename_pc = os.path.join(path_to_save, 'pc_{0}_{1}.ply'.format(mode, self.sample_idx))
-            IO().save_pointcloud(point_cloud_td, filename_pc, colors_as_uint8=False)
+            filename_pc = os.path.join(path_to_save, '{0}_{1}.ply'.format(mode, self.sample_idx))
+            IO().save_pointcloud(point_cloud, filename_pc, colors_as_uint8=False)
 
-        return point_cloud_td
+        self.mesh_dict[mode] = point_cloud
 
+    def render_pointcloud(self, image_size=(256, 256), offset=(0, 0, 0), mode='gt'):
+        renderer_pointcloud = point_cloud_renderer(self.cameras_perspective_p3d, image_size, is_depth=False).to(self.device)
 
+        # image_rendered = renderer_pointcloud(self.mesh_dict[mode])
+        image_rendered = renderer_pointcloud(self.mesh_dict[mode], gamma=(1e-4,),
+                          bg_col=torch.tensor([0.0, 1.0, 0.0, 1.0], dtype=torch.float32, device=self.device),
+                                             znear=[0.01,],
+                                                zfar=[4.0,],)
 
-    # def mesh_and_render_all_modes(self, image_size=(256, 256),
-    #                                     light_offset=(-3.0, 0.0, 4.0),
-    #                                     render_scene=False,
-    #                                     export_mesh=False,
-    #                                     fix_colors=False):
-    #
-    #     # Create save path for current scene
-    #     save_path = os.path.join(self.save_path, self.sample_idx)
-    #     print(save_path)
-    #     if not os.path.exists(save_path):
-    #         os.makedirs(save_path)
-    #
-    #     for mode in tqdm(self.mesh_dict.keys(), desc='Meshing Results', unit='mode'):
-    #
-    #         time.sleep(1)  # Simulating some processing time
-    #         print('\nCurrent mode: ', mode)
-    #
-    #         if mode == 'pc':
-    #             print('Skipping pointcloud mode')
-    #             time.sleep(1)  # Simulating some processing time
-    #             print('-' * 100)
-    #             time.sleep(1)  # Simulating some processing time
-    #             continue
-    #
-    #         # Get the mesh
-    #         print('Obtaining 3D mesh...')
-    #         self.get_mesh_in_world_coordinates(mode, update_face_colors=fix_colors)
-    #
-    #         if render_scene:
-    #             print('Rendering scene...')
-    #             # Render the scene with the current mesh mode
-    #             rendered_image = self.render_scene(image_size=image_size, offset=light_offset)
-    #             # Save the rendered image
-    #             path_render = os.path.join(save_path, "render_{}_{}.png".format(mode, self.sample_idx))
-    #             rendered_image.save(path_render, 'PNG')
-    #
-    #         if export_mesh:
-    #             print('Exporting mesh...')
-    #             self.export_mesh_p3d(mesh_name='mesh_{}'.format(mode), save_path=save_path, update_face_colors=False)
-    #
-    #         time.sleep(0.1)  # Simulating some processing time
-    #         print('-' * 100)
-    #         time.sleep(0.1)  # Simulating some processing time
+                                             # znear=torch.tensor([0.01]).to(self.device),
+                                             # zfar=torch.tensor([4.0]).to(self.device))
+
+        image_pc = image_rendered[0, :].detach().cpu().numpy()
+        image_pc = Image.fromarray((image_pc * 255).astype(np.uint8))
+        image_pc= image_pc.convert('RGBA')
+
+        return image_pc
 
 
 
@@ -429,10 +438,10 @@ class GroundUpVisualizerP3D(BaseVisualizer):
             print('\nCurrent mode: ', mode)
 
             if mode == 'pc':
-                print('Generating 3D pointcloud...')
-                self.get_pointcloud_depth_perspective_in_world_coordinates(mode='gt',
-                                                                           is_save=True,
-                                                                           path_to_save=save_path)
+                print('Skipping pointcloud mode')
+                time.sleep(1)  # Simulating some processing time
+                print('-' * 100)
+                time.sleep(1)  # Simulating some processing time
                 continue
 
             # Get the mesh
@@ -454,4 +463,55 @@ class GroundUpVisualizerP3D(BaseVisualizer):
             time.sleep(0.1)  # Simulating some processing time
             print('-' * 100)
             time.sleep(0.1)  # Simulating some processing time
+
+
+
+    # def mesh_and_render_all_modes(self, image_size=(256, 256),
+    #                                     light_offset=(-3.0, 0.0, 4.0),
+    #                                     render_scene=False,
+    #                                     export_mesh=False,
+    #                                     fix_colors=False):
+    #
+    #     # Create save path for current scene
+    #     save_path = os.path.join(self.save_path, self.sample_idx)
+    #     print(save_path)
+    #     if not os.path.exists(save_path):
+    #         os.makedirs(save_path)
+    #
+    #     for mode in tqdm(self.mesh_dict.keys(), desc='Meshing Results', unit='mode'):
+    #
+    #         time.sleep(1)  # Simulating some processing time
+    #         print('\nCurrent mode: ', mode)
+    #
+    #         if 'pc' in mode:
+    #             print('Generating 3D pointcloud...')
+    #             self.get_pointcloud_depth_perspective_in_world_coordinates(mode=mode,
+    #                                                                        is_save=False,
+    #                                                                        path_to_save=save_path)
+    #             print('Rendering 3D pointcloud...')
+    #             rendered_image_pointcloud = self.render_pointcloud(image_size=image_size, offset=light_offset, mode=mode)
+    #             # Save the rendered image
+    #             path_render_pc = os.path.join(save_path, "render_{}_{}.png".format(mode, self.sample_idx))
+    #             rendered_image_pointcloud.save(path_render_pc, 'PNG')
+    #             continue
+    #
+    #         # Get the mesh
+    #         print('Obtaining 3D mesh...')
+    #         self.get_mesh_in_world_coordinates(mode, update_face_colors=fix_colors)
+    #
+    #         if render_scene:
+    #             print('Rendering scene...')
+    #             # Render the scene with the current mesh mode
+    #             rendered_image = self.render_scene(image_size=image_size, offset=light_offset)
+    #             # Save the rendered image
+    #             path_render = os.path.join(save_path, "render_{}_{}.png".format(mode, self.sample_idx))
+    #             rendered_image.save(path_render, 'PNG')
+    #
+    #         if export_mesh:
+    #             print('Exporting mesh...')
+    #             self.export_mesh_p3d(mesh_name='mesh_{}'.format(mode), save_path=save_path, update_face_colors=False, export_p3d=True)
+    #
+    #         time.sleep(0.1)  # Simulating some processing time
+    #         print('-' * 100)
+    #         time.sleep(0.1)  # Simulating some processing time
 

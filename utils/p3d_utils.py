@@ -6,7 +6,7 @@ from pytorch3d.renderer import ( RasterizationSettings,
                                  MeshRasterizer, MeshRenderer,
                                  SoftPhongShader, HardPhongShader, HardFlatShader,
                                  AlphaCompositor )
-from pytorch3d.renderer import PointsRasterizationSettings, PointsRasterizer, PointsRenderer
+from pytorch3d.renderer import PointsRasterizationSettings, PointsRasterizer, PointsRenderer, PulsarPointsRenderer
 from pytorch3d.renderer import PointLights, DirectionalLights, AmbientLights
 
 
@@ -14,12 +14,13 @@ def define_camera(K, imsize, R_for_camera_topdown, t_for_camera_topdown, device)
     fx, fy, px, py = K[0, 0, 0], K[0, 1, 1], K[0, 0, 2], K[0, 1, 2]
     height, width = imsize
 
-    cameras = PerspectiveCameras(R=R_for_camera_topdown, T=t_for_camera_topdown,
-                                            focal_length=((fx, fy),),
-                                            principal_point=((px, py),),
-                                            in_ndc=False,
-                                            image_size=((height, width),),
-                                            device=device,
+    cameras = PerspectiveCameras(R=R_for_camera_topdown,
+                                 T=t_for_camera_topdown,
+                                focal_length=((fx, fy),),
+                                principal_point=((px, py),),
+                                in_ndc=False,
+                                image_size=((height, width),),
+                                device=device,
                                         )
     return cameras
 
@@ -84,3 +85,27 @@ def mesh_renderer(cameras, imsize, is_depth=False, bg_color_white=True, device='
                             )
 
     return renderer
+
+def point_cloud_renderer(cameras_topdown, imsize, is_depth=False):
+    height, width = imsize
+    rasterizer_td_ = PointsRasterizer(cameras=cameras_topdown,
+                                      raster_settings=PointsRasterizationSettings(image_size=(height, width),
+                                                                                  radius=0.02, #0.006,
+                                                                                  points_per_pixel=2,
+                                                                                  #max_points_per_bin=5000
+                                                                                  bin_size=0),
+                                                                                  )
+    if is_depth:
+        return rasterizer_td_
+    else:
+        # renderer_td_ = PointsRenderer(rasterizer=rasterizer_td_,
+        #                               compositor=AlphaCompositor( background_color=(1.0, 1.0, 1.0, 1.0)) )
+
+        renderer_td_ = PulsarPointsRenderer(rasterizer=PointsRasterizer(cameras=cameras_topdown,
+                                                                    raster_settings=PointsRasterizationSettings(image_size=(height, width),
+                                                                                                                radius=0.02, #0.006,
+                                                                                                                points_per_pixel=2,
+                                                                                                                #max_points_per_bin=5000
+                                                                                                                bin_size=0)),
+                                                                    n_channels=4)#.to(device)
+        return renderer_td_

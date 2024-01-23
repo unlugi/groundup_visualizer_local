@@ -209,8 +209,8 @@ def test_mesh_blender(run_in_gui):
 
 
     # 1) Initialize the renderer class
-    renderer = RendererBlender(configs, mode='gt')
-    # renderer = RendererBlender(configs, mode='pred')
+    # renderer = RendererBlender(configs, mode='gt')
+    renderer = RendererBlender(configs, mode='pred')
 
     # 2) Render mesh
     renderer.render()

@@ -45,7 +45,8 @@ def main(run_cfg, add_mesh_color=True):
         gup_visualizer.mesh_and_render_all_modes(image_size=image_size,
                                                  render_scene=True,
                                                  export_mesh=True,
-                                                 fix_colors=run_cfg["fix_mesh_colors"]
+                                                 fix_colors=run_cfg["fix_mesh_colors"],
+                                                 light_offset=(0.0, 0.0, 4.0)
                                                  )
 
         print('done')

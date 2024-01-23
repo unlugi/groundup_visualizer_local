@@ -7,6 +7,7 @@
 ### 5)  conda install -c fvcore -c iopath -c conda-forge fvcore iopath
 ### 6)  conda install jupyter (pip)
 ### 7)  pip install scikit-image matplotlib imageio plotly opencv-python
+### 8*)  conda install -c bottler nvidiacub
 ### 8)  conda install pytorch3d -c pytorch3d
 ### 9)  pip install kornia
 ### 10) pip install numba 

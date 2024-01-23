@@ -2,6 +2,7 @@
 from .visualizer_p3d import GroundUpVisualizerP3D
 from utils.meshing_v2_utils import BuildingMeshGenerator
 from utils.camera_utils import load_camera
+from temp_scripts.test_mesh_and_camera_blender import RendererBlender
 
 import os
 import numpy as np
@@ -10,17 +11,23 @@ import bpy
 
 
 class GroundUpVisualizerBlender(GroundUpVisualizerP3D):
-    def __init__(self, sample_path, dataset_root, scene_name, add_color_to_mesh=None, device='cpu'):
-        super().__init__(sample_path, dataset_root, scene_name, add_color_to_mesh, device, )
-
-        # Get cameras - keep the raw camera matrices for Blender
+    def __init__(self, sample_path, dataset_root, save_path, scene_name, samples_baseline, cfg_dict, add_color_to_mesh=None,
+                 device='cpu'):
+        super().__init__(sample_path, dataset_root, save_path, scene_name, samples_baseline)
+        self.device = self.get_device(device)
+        self.masks = self.move_to_device(self.masks)
         self.cameras = self.parse_path_and_read_cameras()
-
-        # Mesh generator
         self.add_color_to_mesh = add_color_to_mesh
-        self.mesh_generator = BuildingMeshGenerator(use_color=add_color_to_mesh,
-                                                    mask_color=self.masks,
+        self.mesh_generator = BuildingMeshGenerator(use_color=add_color_to_mesh, mask_color=self.masks,
                                                     apply_dilation_mask=False)
+
+        self.renderer = RendererBlender(cfg=cfg_dict)
+
+        self.mesh_dict = {'gt': None,
+                          'pc': None,
+                          'pred': None,
+                          'pred_baseline': None,
+                          }
 
     def parse_path_and_read_cameras(self):
         # Get paths for cam_td, cam_p, K_td, K_p
@@ -48,23 +55,9 @@ class GroundUpVisualizerBlender(GroundUpVisualizerP3D):
                 'invK_p': invK_p, 'invK_td': invK_td}
 
 
-    def convert_to_blender_mesh(self):
-        # Extract vertices and faces from PyTorch3D mesh
-        vertices = self.mesh.verts_packed().detach().cpu().numpy()
-        faces = self.mesh.faces_packed().detach().cpu().numpy()
 
-        # Create a new mesh
-        mesh = bpy.data.meshes.new(name="CustomMesh")
-        obj = bpy.data.objects.new("CustomObject", mesh)
-        bpy.context.collection.objects.link(obj)
 
-        # Transfer PyTorch3D mesh data to Blender mesh
-        mesh.from_pydata(vertices, [], faces)
 
-        # Update the mesh
-        mesh.update()
-
-        print('here!')
 
 
 
@@ -75,6 +68,15 @@ class GroundUpVisualizerBlender(GroundUpVisualizerP3D):
     #
     # def export_mesh(self):
     #     ...
+
+
+
+# TODO:
+# Start from updated P3D visualizer
+# Replace renderer with BlenderRender
+# Feed blender renderer vertex colors
+# Render a sample (gt/pred/hf/pointcloud)
+
 
 
 

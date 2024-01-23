@@ -31,8 +31,7 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         self.cameras = self.parse_path_and_read_cameras()
         self.add_color_to_mesh = add_color_to_mesh
         self.mesh_generator = BuildingMeshGenerator(use_color=add_color_to_mesh, mask_color=self.masks, apply_dilation_mask=False)
-        self.mesh_dict = {
-            # 'gt': None,
+        self.mesh_dict = {'gt': None,
                           'pred': None,
                           'pred_baseline': None,
                           # 'pc_gt': None,
@@ -224,6 +223,8 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         faces = torch.tensor(mesh_elevation.faces.copy(), dtype=torch.int64).to(self.device)
         normals = torch.tensor(mesh_elevation.vertex_normals.copy(), dtype=torch.float32).to(self.device)
 
+        # faces = torch.flip(faces, dims=[1])
+
         # Initialize each vertex to be white
         # verts_rgb = 0.6 * torch.ones_like(verts)[None]
         vertex_colors = torch.tensor((mesh_elevation.visual.vertex_colors/255.0)[:,:3][None], dtype=torch.float32).to(self.device)
@@ -235,7 +236,6 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         # Create a PyTorch3D Meshes object
         self.mesh = Meshes(verts=[verts_transformed], faces=[faces], verts_normals=[normals], textures=textures)
         # self.mesh_dict[model_name] = Meshes(verts=[verts_transformed], faces=[faces], verts_normals=[normals], textures=textures)
-
 
 
         if update_face_colors:

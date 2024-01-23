@@ -5,6 +5,15 @@ import argparse
 
 from visualizers.visualizer_p3d import GroundUpVisualizerP3D as GroundUpVisualizer
 
+
+import torch
+torch.manual_seed(0)
+import random
+random.seed(0)
+import numpy as np
+np.random.seed(0)
+
+
 def str2bool(v):
     if isinstance(v, bool):
         return v

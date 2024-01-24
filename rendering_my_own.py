@@ -16,6 +16,7 @@ from utils.mesh_metrics_utils import (SimpleVolume, VisibilityAggregator,
 from visualizers.visualizer_p3d import \
     GroundUpVisualizerP3D as GroundUpVisualizer
 
+from PIL import Image
 """
 Run with something like:
 CUDA_VISIBLE_DEVICES=3 python compute_mesh_metrics.py \
@@ -133,9 +134,9 @@ def compute_metrics_for_sample(
                 resolution = 1024
                 invK_b44 = torch.linalg.inv(torch.from_numpy(gt_visualizer.fix_camera_intrinsics(gt_visualizer.cameras['K_p'].copy(), [resolution,resolution])).cuda().clone().unsqueeze(0))
 
-                upsamplined_depth_map = torch.nn.functional.interpolate(depth_b1hw, size=(resolution,resolution), mode='nearest')
+                upsampled_depth_map = torch.nn.functional.interpolate(depth_b1hw, size=(resolution,resolution), mode='nearest')
                 backprojector = BackprojectDepth(width=resolution, height=resolution).cuda()
-                points = backprojector(upsamplined_depth_map, invK_b44)
+                points = backprojector(upsampled_depth_map, invK_b44)
                 points = world_T_cam_b44 @ points
                 pcd = o3d.geometry.PointCloud()
                 pcd.points = o3d.utility.Vector3dVector(points.squeeze().permute(1,0)[:, :3].cpu().numpy())
@@ -144,6 +145,34 @@ def compute_metrics_for_sample(
                 # pcd = pcd.select_by_index(ind)
                 o3d.io.write_point_cloud(str(Path(sample_save_path) / f"{int(gt_visualizer.sample_idx):04d}_backproj_pers_mine.ply"), pcd)
                 gt_visualizer.get_pointcloud_depth_perspective_in_world_coordinates(path_to_save=Path(sample_save_path) / "backproj_pers.ply", is_save=True)
+                
+                resolution = 128
+                invK_b44 = torch.linalg.inv(torch.from_numpy(gt_visualizer.fix_camera_intrinsics(gt_visualizer.cameras['K_p'].copy(), [resolution,resolution])).cuda().clone().unsqueeze(0))
+
+                pred_pers_depth_map_b1hw = torch.tensor(pred_visualizer.pred_pers_depth.detach().clone())[None, None].cuda()
+                pred_topdown_mask_b1hw = (torch.tensor(((gt_visualizer.pred_pers_mask).cpu() > 0.5).numpy())[None,None]).cuda()
+                pred_pers_depth_map_b1hw[~pred_topdown_mask_b1hw] = 0
+                pred_pers_depth_map_b1hw = pred_pers_depth_map_b1hw.transpose(2,3)
+                
+                upsampled_depth_map = torch.nn.functional.interpolate(pred_pers_depth_map_b1hw, size=(resolution,resolution), mode='nearest')
+                backprojector = BackprojectDepth(width=resolution, height=resolution).cuda()
+                points = backprojector(upsampled_depth_map, invK_b44)
+                points = world_T_cam_b44 @ points
+                pcd = o3d.geometry.PointCloud()
+                pcd.points = o3d.utility.Vector3dVector(points.squeeze().permute(1,0)[:, :3].cpu().numpy())
+                _, pred_pers_depth_map_pil  = gt_visualizer.get_pers_depth_map_viz()
+                colors = torch.tensor(np.array(pred_pers_depth_map_pil))/255
+                colors = colors.transpose(1,0).flatten(0,1)
+                colors = np.reshape(colors, (-1, 3))
+                pcd.colors = o3d.utility.Vector3dVector(colors)
+                
+
+                # print("Radius oulier removal")
+                # cl, ind = pcd.remove_radius_outlier(nb_points=2, radius=0.05)
+                # pcd = pcd.select_by_index(ind)
+                o3d.io.write_point_cloud(str(Path(sample_save_path) / f"pred_{int(gt_visualizer.sample_idx):04d}_backproj_pers_mine.ply"), pcd)
+                # gt_visualizer.get_pointcloud_depth_perspective_in_world_coordinates(path_to_save=Path(sample_save_path) / "backproj_pers.ply", is_save=True)
+                
                 
             # get the raw points from the pred pcd
             pcd_points_N3 = torch.tensor(np.array(pred_o3d_pcd.points)).float().cuda()
@@ -188,13 +217,46 @@ def compute_metrics_for_sample(
             cam_marker_mesh = gt_visualizer.get_camera_marker_mesh()
             cam_marker_mesh.export(str(Path(sample_save_path) / f"cam_marker_mesh_{int(gt_visualizer.sample_idx):04d}.ply"))
             
+            # topdown mask save
+            pred_topdown_mask_save_path = Path(sample_save_path) / f"pred_topdown_mask_{int(gt_visualizer.sample_idx):04d}.png"
+            mask = (255 - gt_visualizer.pred_topdown_mask)
+            mask[mask == 0] = 100
+            mask = mask.astype(np.uint8)
+            Image.fromarray(mask).save(str(pred_topdown_mask_save_path), 'PNG')
+            
+            # colored dialted mask
+            pred_colored_topdown_mask_save_path = Path(sample_save_path) / f"pred_colored_topdown_mask_{int(gt_visualizer.sample_idx):04d}.png"
+            colored_mask_viz = gt_visualizer.get_predicted_dialated_mask_viz()
+            colored_mask_viz.save(str(pred_colored_topdown_mask_save_path), 'PNG')
+            
+            # depth maps 
+            # pers
+            gt_pers_depth_map_pil, pred_pers_depth_map_pil  = gt_visualizer.get_pers_depth_map_viz()
+            # gt_pers_depth_map_pil.save(str(Path(sample_save_path) / f"gt_topdown_depth_map_{int(gt_visualizer.sample_idx):04d}.png"), 'PNG')
+            pred_pers_depth_map_pil.save(str(Path(sample_save_path) / f"pred_pers_depth_map_{int(gt_visualizer.sample_idx):04d}.png"), 'PNG')
+
+            # pers mask save
+            pred_pers_mask_save_path = Path(sample_save_path) / f"pred_pers_mask_{int(gt_visualizer.sample_idx):04d}.png"
+            mask = ((gt_visualizer.pred_pers_mask).cpu() > 0.5).numpy() * 255
+            mask = mask.astype(np.uint8)
+            mask = 255 - mask
+            mask[mask == 0] = 100
+            mask = mask.astype(np.uint8)
+            Image.fromarray(mask).save(str(pred_pers_mask_save_path), 'PNG')
+
+            # topdown depth maps
+            gt_topdown_depth_map_pil, pred_topdown_depth_map_pil = gt_visualizer.get_topdown_depth_map_viz()
+            # save topdown
+            gt_topdown_depth_map_pil.save(str(Path(sample_save_path) / f"gt_topdown_depth_map_{int(gt_visualizer.sample_idx):04d}.png"), 'PNG')
+            pred_topdown_depth_map_pil.save(str(Path(sample_save_path) / f"{prefix}_pred_topdown_depth_map_{int(gt_visualizer.sample_idx):04d}.png"), 'PNG')
+            
     except Exception as e:
         print("Exception: ", e, sample_path)
 
 def main(sample_paths, dataset_root, save_path, debug_dump=False, scene_name=None, verbose=False, clip_with_visibility=False, prefix=""):
     
     # sample_paths = sample_paths[316:]
-    indices = [6,26,81,55,30,0,41,36]
+    indices = [0,6,26,81,55,30,41,36]
     sample_paths = [sample_paths[i] for i in indices] 
     for sample_path in tqdm(sample_paths):
         # create a folder for each sample

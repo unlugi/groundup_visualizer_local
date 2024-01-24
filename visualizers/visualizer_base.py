@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import pickle
 import numpy as np
 import torch
 import PIL.Image as Image
@@ -18,7 +19,21 @@ class BaseVisualizer:
         self.cameras = self.parse_path_and_read_cameras()
         self.masks = self.parse_path_and_read_segmentation()
         
+        self.pred_topdown_mask_path = "/mnt/data_s/gunlu/experiments/GroundUp/result_paper/ms_perturb_grad_normal_2/sf_test_1k_2/depth_prediction/pred_images"
+        
+        self.pers_pred_path = "/mnt/data_f/gunlu/Experiments/GroundUp/SimpleRecon/RESULTS/v9/epi_v9_occ_p_empty_linscale_big_ad_50_0/urbanscene3d_epipolar/sf_test_1k_2"
+        self.pred_pers_depth, self.pred_pers_mask = self.load_pred_pers_pred()
+        
+        self.pred_topdown_mask = self.load_pred_topdown_mask()
+        
         self.gt_pers_depth = self.load_gt_pers_depths()
+        
+
+    def load_pred_topdown_mask(self):
+        pred_mask_path = os.path.join(self.pred_topdown_mask_path, f"mask_pred_{int(self.sample_idx)}.png")
+        pred_mask = Image.open(pred_mask_path, formats=["PNG"]).convert('RGB')
+        pred_mask = np.array(pred_mask)
+        return pred_mask
 
     def parse_path_and_read_cameras(self):
         # Renderer specific
@@ -55,6 +70,16 @@ class BaseVisualizer:
         depth[~mask_b] = torch.tensor(np.nan)
         
         return depth
+
+    def load_pred_pers_pred(self):
+        pickle_path = Path("/mnt/data_f/gunlu/Experiments/GroundUp/SimpleRecon/RESULTS/v9/epi_v9_occ_p_empty_linscale_big_ad_50_0/urbanscene3d_epipolar/sf_test_1k_2/depths/")
+        pickle_path = pickle_path / f"{int(self.sample_idx):04d}" / f"{int(self.sample_idx):04d}.pickle"
+        
+        # load pickle
+        with open(pickle_path, 'rb') as f:
+            data = pickle.load(f)
+        
+        return data['depth_pred_s0_b1hw'].squeeze(), data['foreground_pred_s0_b1hw'].squeeze()
 
     def parse_path_and_read_segmentation(self):
         # Get paths for cam_td, cam_p, K_td, K_p

@@ -66,24 +66,24 @@ def compute_metrics_for_sample(
     clip_with_visibility=False
 ):
 
-    # get separate visualizers for gt and pred, since the visualizer code uses the same internal variable for meshes.
-    gt_visualizer, gt_trimesh_mesh = get_visualizer_and_mesh(sample_path, dataset_root, mode="gt", scene_name=scene_name, verbose=verbose)
-    pred_visualizer, pred_trimesh_mesh = get_visualizer_and_mesh(sample_path, dataset_root, mode="pred", scene_name=scene_name, verbose=verbose)
-    
-    # convert to open3d and sample to get a point cloud.
-    gt_o3d_mesh = gt_trimesh_mesh.as_open3d
-    gt_o3d_pcd = gt_o3d_mesh.sample_points_uniformly(number_of_points=200000)
-    
-    pred_o3d_mesh = pred_trimesh_mesh.as_open3d
-    pred_o3d_pcd = pred_o3d_mesh.sample_points_uniformly(number_of_points=200000)
-    
-    if debug_dump:
-        # cleanliness check
-        _test_metrics, _, _ = compute_point_cloud_metrics(gt_o3d_pcd, gt_o3d_pcd)
-        assert _test_metrics['chamfer↓'] == 0.0
-        assert _test_metrics['f1_score↑'] == 1.0
-    
     try:
+    # get separate visualizers for gt and pred, since the visualizer code uses the same internal variable for meshes.
+        gt_visualizer, gt_trimesh_mesh = get_visualizer_and_mesh(sample_path, dataset_root, mode="gt", scene_name=scene_name, verbose=verbose)
+        pred_visualizer, pred_trimesh_mesh = get_visualizer_and_mesh(sample_path, dataset_root, mode="pred", scene_name=scene_name, verbose=verbose)
+        
+        # convert to open3d and sample to get a point cloud.
+        gt_o3d_mesh = gt_trimesh_mesh.as_open3d
+        gt_o3d_pcd = gt_o3d_mesh.sample_points_uniformly(number_of_points=100000)
+        
+        pred_o3d_mesh = pred_trimesh_mesh.as_open3d
+        pred_o3d_pcd = pred_o3d_mesh.sample_points_uniformly(number_of_points=100000)
+        
+        if debug_dump:
+            # cleanliness check
+            _test_metrics, _, _ = compute_point_cloud_metrics(gt_o3d_pcd, gt_o3d_pcd)
+            assert _test_metrics['chamfer↓'] == 0.0
+            assert _test_metrics['f1_score↑'] == 1.0
+
         visible_pred_indices = None
         visible_gt_indices = None
         if clip_with_visibility:
@@ -170,7 +170,7 @@ def compute_metrics_for_sample(
             
     except Exception as e:
         print("Error in metrics:", e)
-        print(sample_path, visible_pred_indices)
+        print(sample_path)
         metrics = {}
         metrics["acc↓"] = 1.0
         metrics["compl↓"] = 1.0

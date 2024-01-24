@@ -24,6 +24,9 @@ from .pyrenderer import Renderer as pyRenderer, camera_marker, transform_trimesh
 from .pyrenderer import create_light_array  
 import pyrender
 
+import matplotlib.pyplot as plt
+
+
 class GroundUpVisualizerP3D(BaseVisualizer):
     def __init__(self, sample_path, dataset_root, scene_name, add_color_to_mesh=None, device='cpu', verbose=True):
         super().__init__(sample_path, dataset_root, scene_name)
@@ -448,3 +451,109 @@ class GroundUpVisualizerP3D(BaseVisualizer):
             IO().save_pointcloud(point_cloud_td, path_to_save, colors_as_uint8=False)
 
         return point_cloud_td
+    
+    def get_topdown_depth_map_viz(self):
+        
+        topdown_gt = self.data['gt'].copy()
+        topdown_gt = torch.tensor(topdown_gt)[None]
+        topdown_gt_torch, vmin, vmax = colormap_image(topdown_gt, return_vminvmax=True)
+        
+        topdown_gt_pil = Image.fromarray(np.uint8(255*topdown_gt_torch.detach().permute(1,2,0).cpu().numpy()))
+        
+        
+        topdown_pred = self.data['pred'].copy()
+        topdown_pred = torch.tensor(topdown_pred)[None]
+        topdown_pred_torch = colormap_image(topdown_pred, vmin=vmin, vmax=vmax)
+        topdown_pred_pil = Image.fromarray(np.uint8(255*topdown_pred_torch.detach().permute(1,2,0).cpu().numpy()))
+        
+        
+        return topdown_gt_pil, topdown_pred_pil
+
+    def get_pers_depth_map_viz(self):
+        
+        # topdown_gt = self.data['gt'].copy()
+        # topdown_gt = torch.tensor(topdown_gt)[None]
+        # topdown_gt_torch, vmin, vmax = colormap_image(topdown_gt, return_vminvmax=True)
+        
+        # topdown_gt_pil = Image.fromarray(np.uint8(255*topdown_gt_torch.detach().permute(1,2,0).cpu().numpy()))
+        
+        
+        pers_pred = self.pred_pers_depth
+        pers_pred = torch.tensor(pers_pred)[None]
+        pers_pred = colormap_image(pers_pred)
+        pers_pred_pil = Image.fromarray(np.uint8(255*pers_pred.detach().permute(1,2,0).cpu().numpy()))
+        
+        return None, pers_pred_pil
+
+
+    def get_predicted_dialated_mask_viz(self):
+        lookup_labels = self.mesh_generator.get_lookup_labels(torch.tensor(self.pred_topdown_mask)[:,:,0][None] == 255)
+        colored_mask = self.mesh_generator.create_colors(lookup_labels, assign_colors="rainbow")
+        colored_mask = colored_mask.reshape(256,256,3)
+        colored_mask = Image.fromarray(np.uint8(colored_mask))
+        
+        return colored_mask
+        
+        
+
+def colormap_image(
+                image_1hw,
+                mask_1hw=None, 
+                invalid_color=(0.0, 0, 0.0), 
+                flip=True,
+                vmin=None,
+                vmax=None, 
+                return_vminvmax=False,
+                colormap="turbo",
+            ):
+    """
+    Colormaps a one channel tensor using a matplotlib colormap.
+
+    Args: 
+        image_1hw: the tensor to colomap.
+        mask_1hw: an optional float mask where 1.0 donates valid pixels. 
+        colormap: the colormap to use. Default is turbo.
+        invalid_color: the color to use for invalid pixels.
+        flip: should we flip the colormap? True by default.
+        vmin: if provided uses this as the minimum when normalizing the tensor.
+        vmax: if provided uses this as the maximum when normalizing the tensor.
+            When either of vmin or vmax are None, they are computed from the 
+            tensor.
+        return_vminvmax: when true, returns vmin and vmax.
+
+    Returns:
+        image_cm_3hw: image of the colormapped tensor.
+        vmin, vmax: returned when return_vminvmax is true.
+
+
+    """
+    valid_vals = image_1hw if mask_1hw is None else image_1hw[mask_1hw.bool()]
+    if vmin is None:
+        vmin = valid_vals.min()
+    if vmax is None:
+        vmax = valid_vals.max()
+
+    cmap = torch.Tensor(
+                            plt.cm.get_cmap(colormap)(
+                                                torch.linspace(0, 1, 256)
+                                            )[:, :3]
+                        ).to(image_1hw.device)
+    if flip:
+        cmap = torch.flip(cmap, (0,))
+
+    h, w = image_1hw.shape[1:]
+
+    image_norm_1hw = (image_1hw - vmin) / (vmax - vmin)
+    image_int_1hw = (torch.clamp(image_norm_1hw * 255, 0, 255)).byte().long()
+
+    image_cm_3hw = cmap[image_int_1hw.flatten(start_dim=1)
+                                        ].permute([0, 2, 1]).view([-1, h, w])
+
+    if mask_1hw is not None:
+        invalid_color = torch.Tensor(invalid_color).view(3, 1, 1).to(image_1hw.device)
+        image_cm_3hw = image_cm_3hw * mask_1hw + invalid_color * (1 - mask_1hw)
+
+    if return_vminvmax:
+        return image_cm_3hw, vmin, vmax
+    else:
+        return image_cm_3hw

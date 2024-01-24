@@ -170,9 +170,6 @@ class BuildingMeshGenerator:
 
     def get_lookup_labels(self, mask_fg_tensor):
 
-
-  
-        
         # Apply dilation
         if self.apply_dilation_mask:
             structuring_element = torch.tensor([[1, 1],

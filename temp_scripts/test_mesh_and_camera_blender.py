@@ -11,19 +11,22 @@ from mathutils import Matrix
 debug = False # True if you want to run in Blender GUI
 
 class RendererBlender:
-    def __init__(self, cfg, mode='gt'):
+    def __init__(self, cfg, cfg_vis, cameras, mode='gt'):
         self.cfg = cfg
+        self.cfg_vis = cfg_vis
+        self.cameras = cameras
         self.mode = mode # 'gt' or 'pred' mesh
-        self.data_paths = self.prepare_data_paths()
+        # self.data_paths = self.prepare_data_paths()
         self.set_rendering_settings()
         self.set_light_settings()
         self.initialize_cameras()
-        self.import_input_model()
+        # self.import_input_model()
 
-    def render(self):
+    def render(self, save_path):
 
         # Set rendering save path
-        bpy.context.scene.render.filepath = r'//{}'.format(self.data_paths['path_save_render'])
+        # bpy.context.scene.render.filepath = r'//{}'.format(self.data_paths['path_save_render'])
+        bpy.context.scene.render.filepath = save_path
 
         # Render still
         bpy.ops.render.render(write_still=True)
@@ -124,12 +127,18 @@ class RendererBlender:
             light.data.cycles.max_bounces = 1014
 
 
-    def import_input_model(self, collection_name='Collection'):
+    def import_input_model(self, path_mesh, collection_name='Collection'):
+
+        # # Parse filepath to extract the file extension
+        # file_path = self.data_paths['path_mesh']
+        # file_name = file_path.split('/')[-1]
+        # file_extension = file_name.split('.')[-1]
 
         # Parse filepath to extract the file extension
-        file_path = self.data_paths['path_mesh']
+        file_path = path_mesh
         file_name = file_path.split('/')[-1]
         file_extension = file_name.split('.')[-1]
+
 
         if file_extension == 'obj':
             bpy.ops.import_scene.obj(filepath=file_path)
@@ -152,7 +161,8 @@ class RendererBlender:
     def initialize_cameras(self, collection_name="Collection"):
 
         # Read camera pose
-        camera_matrix_raw = np.load(self.data_paths['path_cam_perspective'])['data']
+        # camera_matrix_raw = np.load(self.data_paths['path_cam_perspective'])['data']
+        camera_matrix_raw = self.cameras['cam_perspective_raw'].copy()
 
         # User Camera
         cam = bpy.context.scene.camera # 'Camera'

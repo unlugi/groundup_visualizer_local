@@ -129,8 +129,8 @@ class Heightfield:
         # Mirror along horizontal axis and fix normals
         # mesh.vertices[:, 1] = -1 * mesh.vertices[:, 1]
 
-        trimesh.repair.fix_normals(mesh, multibody=False)
-        trimesh.repair.fix_winding(mesh)
+        # trimesh.repair.fix_normals(mesh, multibody=False)
+        # trimesh.repair.fix_winding(mesh)
 
         return mesh
 

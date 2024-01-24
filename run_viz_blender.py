@@ -44,14 +44,19 @@ def main(run_cfg, add_mesh_color=True):
                                             device='cuda',
                                             samples_baseline=samples_hf[i],
                                             cfg_dict=run_cfg,
+                                            image_size=(256, 256),
+                                            light_offset=(0, 0, 5),
+
                                             )
 
         # Generate the mesh and render all modes
-        gup_visualizer.mesh_and_render_all_modes(image_size=image_size,
-                                                 render_scene=True,
-                                                 export_mesh=True,
-                                                 fix_colors=run_cfg["fix_mesh_colors"]
-                                                 )
+        # gup_visualizer.mesh_and_render_all_modes(image_size=image_size,
+        #                                          render_scene=True,
+        #                                          export_mesh=True,
+        #                                          fix_colors=run_cfg["fix_mesh_colors"]
+        #                                          )
+
+        gup_visualizer.prepare_mesh_for_bpy()
 
         print('done')
 

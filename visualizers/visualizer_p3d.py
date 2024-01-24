@@ -26,7 +26,7 @@ from pytorch3d.renderer import Textures
 class GroundUpVisualizerP3D(BaseVisualizer):
     def __init__(self, sample_path, dataset_root, save_path, scene_name, samples_baseline,
                  image_size, light_offset, add_color_to_mesh=None, device='cpu'):
-        super().__init__(sample_path, dataset_root, save_path, scene_name,samples_baseline)
+        super().__init__(sample_path, dataset_root, save_path, scene_name,samples_baseline,)
         self.device = self.get_device(device)
         self.masks = self.move_to_device(self.masks)
         self.cameras = self.parse_path_and_read_cameras()
@@ -247,7 +247,7 @@ class GroundUpVisualizerP3D(BaseVisualizer):
 
         # verts = torch.tensor(mesh_elevation.vertices.copy(), dtype=torch.float32).to(self.device)
         faces = torch.tensor(mesh_elevation.faces.copy(), dtype=torch.int64).to(self.device)
-        faces = torch.flip(faces, dims=[1])
+        # faces = torch.flip(faces, dims=[1])
         normals = torch.tensor(mesh_elevation.vertex_normals.copy(), dtype=torch.float32).to(self.device)
 
         # Initialize each vertex to be white
@@ -277,6 +277,7 @@ class GroundUpVisualizerP3D(BaseVisualizer):
 
             # Update mesh in mesh_dict
             self.mesh_dict[model_name] = mesh
+
 
 
     def render_scene(self, mode='gt'):
@@ -348,9 +349,9 @@ class GroundUpVisualizerP3D(BaseVisualizer):
 
             mesh_trimesh = trimesh.Trimesh(vertices=verts_np, faces=faces_np, vertex_colors=vertex_colors_np)
             mesh_trimesh.visual.vertex_colors = vertex_colors_np
-            trimesh.repair.fix_winding(mesh_trimesh)
-            trimesh.repair.fix_inversion(mesh_trimesh, multibody=False)
-            trimesh.repair.fix_normals(mesh_trimesh, multibody=False)
+            # trimesh.repair.fix_winding(mesh_trimesh)
+            # trimesh.repair.fix_inversion(mesh_trimesh, multibody=False)
+            # trimesh.repair.fix_normals(mesh_trimesh, multibody=False)
 
             mesh_trimesh.export(filename+".obj", file_type='obj', include_color=True)
             # mesh_with_color = export_obj(mesh_trimesh, include_color=True, include_normals=True)

@@ -43,17 +43,22 @@ def get_visualizer_and_mesh(sample_path, dataset_root, mode="gt", scene_name=Non
     return gup_visualizer, gup_visualizer.get_trimesh(update_face_colors=False)
 
 
-def dump_debug_viz(gup_visualizer, save_path, mode="gt", offset=(-3.0, 0.0, 4.0)):
+def dump_debug_viz(gup_visualizer, save_path, mode="gt", offset=(-3.0, 0.0, 4.0), prefix=""):
     # Save mesh
-    filename = os.path.join(save_path, "mesh_{}_elevation_{}.ply".format(mode, gup_visualizer.sample_idx))
+    filename = os.path.join(save_path, "{}_mesh_{}_elevation_{}.ply".format(prefix, mode, gup_visualizer.sample_idx))
     IO().save_mesh(gup_visualizer.mesh, filename)
     
     # Render image
     cam_p_p3d, rendered_image = gup_visualizer.render_scene_pyrender(image_size=(1024, 1024), offset=offset)
     # cam_p_p3d, rendered_image = gup_visualizer.render_scene(image_size=(1024, 1024), offset=offset)
-    filename = os.path.join(save_path, "image_{}_{}.png".format(mode, gup_visualizer.sample_idx))
+    filename = os.path.join(save_path, "{}_pers_{}_{}.png".format(prefix, mode, gup_visualizer.sample_idx))
     rendered_image.save(filename, 'PNG')
-    return cam_p_p3d, rendered_image
+    
+    cam_p_p3d, rendered_image = gup_visualizer.render_scene_pyrender(image_size=(1024, 1024), offset=offset, topdown=True)
+    filename = os.path.join(save_path, "{}_topdown_{}_{}.png".format(prefix, mode, gup_visualizer.sample_idx))
+    rendered_image.save(filename, 'PNG')
+    
+    return cam_p_p3d, None
 
 
 def compute_metrics_for_sample(
@@ -63,9 +68,12 @@ def compute_metrics_for_sample(
     debug_dump=False, 
     scene_name=None, 
     verbose=False, 
-    clip_with_visibility=False
+    clip_with_visibility=False,
+    prefix="",
 ):
 
+    debug_dump = True
+    
     # get separate visualizers for gt and pred, since the visualizer code uses the same internal variable for meshes.
     gt_visualizer, gt_trimesh_mesh = get_visualizer_and_mesh(sample_path, dataset_root, mode="gt", scene_name=scene_name, verbose=verbose)
     pred_visualizer, pred_trimesh_mesh = get_visualizer_and_mesh(sample_path, dataset_root, mode="pred", scene_name=scene_name, verbose=verbose)
@@ -119,7 +127,7 @@ def compute_metrics_for_sample(
                    
             if debug_dump:
                 # dump the volume
-                pcd_visibility_volume_save_path = Path(sample_save_path) / "pcd_visibility_volume.ply"
+                pcd_visibility_volume_save_path = Path(sample_save_path) / f"{int(gt_visualizer.sample_idx):04d}_pcd_visibility_volume.ply"
                 o3d.io.write_point_cloud(str(pcd_visibility_volume_save_path), visibility_volume.to_point_cloud(threshold=0.5, num_points=100000))
                 
                 resolution = 1024
@@ -134,7 +142,7 @@ def compute_metrics_for_sample(
                 # print("Radius oulier removal")
                 # cl, ind = pcd.remove_radius_outlier(nb_points=2, radius=0.05)
                 # pcd = pcd.select_by_index(ind)
-                o3d.io.write_point_cloud(str(Path(sample_save_path) / "backproj_pers_mine.ply"), pcd)
+                o3d.io.write_point_cloud(str(Path(sample_save_path) / f"{int(gt_visualizer.sample_idx):04d}_backproj_pers_mine.ply"), pcd)
                 gt_visualizer.get_pointcloud_depth_perspective_in_world_coordinates(path_to_save=Path(sample_save_path) / "backproj_pers.ply", is_save=True)
                 
             # get the raw points from the pred pcd
@@ -153,44 +161,41 @@ def compute_metrics_for_sample(
             # get visible indices
             visible_gt_indices = valid_mask_N.nonzero().squeeze().cpu().numpy().tolist()
 
-        # compute metrics
-        metrics, distances_pred2gt, distances_gt2pred = compute_point_cloud_metrics(gt_o3d_pcd, pred_o3d_pcd, visible_pred_indices=visible_pred_indices, visible_gt_indices=visible_gt_indices)
-
         if verbose:
-            print(sample_path, "\n", metrics)
+            print(sample_path, "\n")
         
         if debug_dump:
-            dump_debug_viz(gt_visualizer, sample_save_path, mode="gt")
-            dump_debug_viz(pred_visualizer, sample_save_path, mode="pred")
-        
-        # save metrics in a json file
-        metrics_save_path = Path(sample_save_path) / "metrics.json"
-        with open(metrics_save_path, 'w') as f:
-            json.dump(metrics, f, indent=4)
+            dump_debug_viz(gt_visualizer, sample_save_path, mode="gt", prefix="")
+            dump_debug_viz(pred_visualizer, sample_save_path, mode="pred", prefix=prefix)
+            
+            # path to the sketch
+            filename = f"sketch_{int(gt_visualizer.sample_idx):04d}.svg0001.png"
+            sketch_save_path = Path(dataset_root) / "Camera" / "sketch" / filename
+            # copy the sketch to the sample folder
+            filename = f"sketch_pers_{int(gt_visualizer.sample_idx):04d}.svg0001.png"
+            os.system(f'cp {sketch_save_path} {sample_save_path / filename}')
+            
+            # path to the sketch
+            filename = f"sketch_{int(gt_visualizer.sample_idx):04d}.svg0001.png"
+            sketch_save_path = Path(dataset_root) / "Camera_Top_Down" / "sketch" / filename
+            # copy the sketch to the sample folder
+            filename = f"sketch_topdown_{int(gt_visualizer.sample_idx):04d}.svg0001.png"
+            os.system(f'cp {sketch_save_path} {sample_save_path / filename}')
             
     except Exception as e:
-        print("Error in metrics:", e)
-        print(sample_path, visible_pred_indices)
-        metrics = {}
-        metrics["acc↓"] = 1.0
-        metrics["compl↓"] = 1.0
-        metrics["chamfer↓"] = 1.0
-        metrics["precision↑"] = 0.0
-        metrics["recall↑"] = 0.0
-        metrics["f1_score↑"] = 0.0
-        
-    return metrics
+        print("Exception: ", e, sample_path)
 
-def main(sample_paths, dataset_root, save_path, debug_dump=False, scene_name=None, verbose=False, clip_with_visibility=False):
+def main(sample_paths, dataset_root, save_path, debug_dump=False, scene_name=None, verbose=False, clip_with_visibility=False, prefix=""):
     
-    all_metrics = []
     # sample_paths = sample_paths[316:]
+    indices = [6,26,81,55,30,0,41,36]
+    sample_paths = [sample_paths[i] for i in indices] 
     for sample_path in tqdm(sample_paths):
         # create a folder for each sample
         sample_save_path = Path(save_path) / sample_path.split('/')[-1].split('.')[0]
         sample_save_path.mkdir(exist_ok=True, parents=True)
         
-        sample_metrics = compute_metrics_for_sample(
+        compute_metrics_for_sample(
             sample_path=sample_path, 
             dataset_root=dataset_root, 
             sample_save_path=sample_save_path, 
@@ -198,24 +203,10 @@ def main(sample_paths, dataset_root, save_path, debug_dump=False, scene_name=Non
             scene_name=scene_name, 
             verbose=verbose, 
             clip_with_visibility=clip_with_visibility,
+            prefix=prefix,
         )
         
-        all_metrics.append(sample_metrics)
     
-    # aggregate metrics
-    metrics = {}
-    for metric_name in all_metrics[0].keys():
-        metrics[metric_name] = torch.tensor([sample_metrics[metric_name] for sample_metrics in all_metrics]).mean().item()
-    
-    # add some extra info
-    metrics['num_samples'] = len(all_metrics)
-    metrics["sample_path"] = str(Path(sample_paths[0]).parent.resolve())
-    
-    # save metrics in a json file
-    metrics_save_path = Path(save_path) / "metrics.json"
-    with open(metrics_save_path, 'w') as f:
-        json.dump(metrics, f, indent=4)
-        
 
 
 @click.command()
@@ -249,6 +240,11 @@ def main(sample_paths, dataset_root, save_path, debug_dump=False, scene_name=Non
     help="Save path.",
 )
 @click.option(
+    "--prefix",
+    type=str,
+    default="",
+)
+@click.option(
     "--debug_dump",
     is_flag=True,
 )
@@ -269,6 +265,7 @@ def cli(
     debug_dump: bool=False, 
     verbose: bool=False, 
     clip_with_visibility: bool=False,
+    prefix: str="",
 ):
 
     # get paths of samples to evaluate. They should have "_gt.npy" in the name,
@@ -284,6 +281,7 @@ def cli(
         debug_dump=debug_dump,
         verbose=verbose,
         clip_with_visibility=clip_with_visibility,
+        prefix=prefix,
     )
 
 if __name__ == '__main__':

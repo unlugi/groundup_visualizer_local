@@ -37,7 +37,7 @@ class BaseVisualizer:
         proj = np.load(path_proj)
         pred = np.load(path_pred)
 
-        return {'gt': gt, 'proj': proj, 'pred': pred}
+        return {'gt': gt, 'proj': proj, 'pred': pred, "gt_perspective": self.load_gt_pers_depths()}
 
     def load_gt_pers_depths(self):
         perspective_depth_path = Path(self.dataset_root) / "Camera" / "depth" / "depth_{}.exr0001.exr".format(self.sample_idx)

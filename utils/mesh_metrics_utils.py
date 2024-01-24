@@ -393,6 +393,7 @@ def compute_point_cloud_metrics(
     max_dist: float = 1.0,
     dist_threshold: float = 0.05,
     visible_pred_indices: Optional[list[int]] = None,
+    visible_gt_indices: Optional[list[int]] = None,
 ) -> Tuple[Dict[str, float], np.ndarray, np.ndarray]:
     """
     Compute metrics for a predicted and gt point cloud.
@@ -427,29 +428,47 @@ def compute_point_cloud_metrics(
         distances_gt2pred = torch.zeros(len(gt_pcd.points))
         return metrics, distances_pred2gt, distances_gt2pred
 
-    # find nearest neighbors
-    distances_gt2pred = torch.tensor(gt_pcd.compute_point_cloud_distance(pred_pcd))
+    if visible_gt_indices is not None:
+        trimmed_gt_pcd = gt_pcd.select_by_index(visible_gt_indices)
+    else:
+        trimmed_gt_pcd = gt_pcd
+    
+    if len(trimmed_gt_pcd.points) == 0:
+        distances_gt2pred = torch.zeros(len(trimmed_gt_pcd.points))
+        # completion
+        metrics["compl↓"] = max_dist
+        # recall
+        metrics["recall↑"] = 0.0
+    else:
+        # find nearest neighbors
+        distances_gt2pred = torch.tensor(trimmed_gt_pcd.compute_point_cloud_distance(pred_pcd))
+        # completion
+        metrics["compl↓"] = float(torch.mean(distances_gt2pred))
+        # recall
+        metrics["recall↑"] = float((distances_gt2pred <= dist_threshold).float().mean())
+
 
     # only use the visibility masks when computing pred to gt distances
     if visible_pred_indices is not None:
-        pred_pcd = pred_pcd.select_by_index(visible_pred_indices)
-        
-    distances_pred2gt = torch.tensor(pred_pcd.compute_point_cloud_distance(gt_pcd))
-
-    # accuracy
-    metrics["acc↓"] = float(torch.mean(distances_pred2gt))
-
-    # completion
-    metrics["compl↓"] = float(torch.mean(distances_gt2pred))
+        trimmed_pred_pcd = pred_pcd.select_by_index(visible_pred_indices)
+    else:
+        trimmed_pred_pcd = pred_pcd
+    
+    if len(pred_pcd.points) == 0:
+        distances_pred2gt = torch.zeros(len(trimmed_pred_pcd.points))
+        # accuracy
+        metrics["acc↓"] = max_dist
+        # precision
+        metrics["precision↑"] = 0.0
+    else:
+        distances_pred2gt = torch.tensor(pred_pcd.compute_point_cloud_distance(gt_pcd))
+        # accuracy
+        metrics["acc↓"] = float(torch.mean(distances_pred2gt))
+        # precision
+        metrics["precision↑"] = float((distances_pred2gt <= dist_threshold).float().mean())
 
     # chamfer distance
     metrics["chamfer↓"] = float(0.5 * (metrics["acc↓"] + metrics["compl↓"]))
-
-    # precision
-    metrics["precision↑"] = float((distances_pred2gt <= dist_threshold).float().mean())
-
-    # recall
-    metrics["recall↑"] = float((distances_gt2pred <= dist_threshold).float().mean())
 
     # F1 score
     # catch the edge case where both precision and recall are 0

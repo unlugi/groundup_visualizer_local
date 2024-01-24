@@ -6,16 +6,23 @@ import PIL.Image as Image
 import trimesh
 from trimesh.exchange.obj import export_obj
 
+from pytorch3d.structures import Pointclouds
+from pytorch3d.io import IO
+
 from utils.mesh_metrics_utils import BackprojectDepth
 
 from .visualizer_base import BaseVisualizer
 from utils.camera_utils import load_camera
-from utils.meshing_v2_utils import BuildingMeshGenerator, \
+from utils.meshing_v2_utils import BuildingMeshGenerator, get_xy_depth_homogeneous_coordinates_bs1_vis, \
                                    update_vertex_colors, update_vertex_colors_fast, update_vertex_colors_fast_padding
 from utils.p3d_utils import define_camera, mesh_renderer
 
 from pytorch3d.structures import Meshes
 from pytorch3d.renderer import Textures
+
+from .pyrenderer import Renderer as pyRenderer, transform_trimesh
+from .pyrenderer import create_light_array  
+import pyrender
 
 class GroundUpVisualizerP3D(BaseVisualizer):
     def __init__(self, sample_path, dataset_root, scene_name, add_color_to_mesh=None, device='cpu', verbose=True):
@@ -26,8 +33,7 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         self.masks = self.move_to_device(self.masks)
         self.cameras = self.parse_path_and_read_cameras()
         self.add_color_to_mesh = add_color_to_mesh
-        self.mesh_generator = BuildingMeshGenerator(use_color=add_color_to_mesh, mask_color=self.masks, apply_dilation_mask=False)
-
+        self.mesh_generator = BuildingMeshGenerator(use_color=add_color_to_mesh, mask_color=self.masks, apply_dilation_mask=True)
         
     def get_device(self, device_name):
         # Set device
@@ -65,21 +71,19 @@ class GroundUpVisualizerP3D(BaseVisualizer):
 
 
     def parse_path_and_read_cameras(self):
+
         # Get paths for cam_td, cam_p, K_td, K_p
-        path_cam_perspective = os.path.join(self.dataset_root, 'Camera', 'camera', 'campose_raw_{}.npz'.format(self.sample_idx))
+        path_cam_perspective = os.path.join(self.dataset_root, 'Camera', 'camera','campose_raw_{}.npz'.format(self.sample_idx))
         path_cam_topdown = os.path.join(self.dataset_root, 'Camera_Top_Down', 'camera', 'campose_raw_{}.npz'.format(self.sample_idx))
         path_K_perspective = os.path.join(self.dataset_root, 'cam_K.npy')
         path_K_topdown = os.path.join(self.dataset_root, 'cam_K_td.npy')
 
         # Get cameras and convert to Pytorch3D convention
-        cam_perspective_raw = np.load(path_cam_perspective)['data']
-        cam_topdown_raw = np.load(path_cam_topdown)['data']
+        cam_perspective = np.load(path_cam_perspective)['data']
+        cam_topdown = np.load(path_cam_topdown)['data']
 
-        _, _, cam_T_world = self.from_blender_toWorld_to_OpenCV_worldTocam(blender_matrix_world=cam_perspective_raw, is_camera=True)
-        cam_T_world = cam_T_world.astype(np.float32)
-
-        cam_perspective = load_camera(cam_perspective_raw.copy(), cam_type='Camera')
-        cam_topdown = load_camera(cam_topdown_raw.copy(), cam_type='Camera_Top_Down')
+        cam_perspective = load_camera(cam_perspective, cam_type='Camera')
+        cam_topdown = load_camera(cam_topdown, cam_type='Camera_Top_Down')
 
         # Get camera intrinsics K_td, invK_td, K_p, invK_p
         K_p = np.load(path_K_perspective).astype(np.float32)
@@ -87,8 +91,7 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         invK_p = np.linalg.inv(K_p)
         invK_td = np.linalg.inv(K_td)
 
-        return {'cam_T_world': cam_T_world, # opencv 
-                'cam_perspective': cam_perspective, 'cam_topdown': cam_topdown, # Pytorch3D
+        return {'cam_perspective': cam_perspective, 'cam_topdown': cam_topdown,
                 'K_p': K_p, 'K_td': K_td,
                 'invK_p': invK_p, 'invK_td': invK_td}
 
@@ -129,11 +132,11 @@ class GroundUpVisualizerP3D(BaseVisualizer):
 
         # Get camera intrinsics and extrinsics
         Kinv_td = torch.from_numpy(self.cameras['invK_td']).to(self.device)
-        pose = torch.from_numpy(self.cameras['cam_topdown']['camera_pc']).to(self.device)
+        extrinsics_RT_td = torch.from_numpy(self.cameras['cam_topdown']['camera_pc']).to(self.device)
 
         # Back-project to 3D world coordinates
         coords_cam = Kinv_td @ corners_ground_uv1.T
-        corners_ground_xyz = pose @ coords_cam
+        corners_ground_xyz = extrinsics_RT_td.inverse() @ coords_cam
         corners_ground_xyz = corners_ground_xyz.type(torch.float32) # xzy?
         corners_ground_xyz = corners_ground_xyz[:3, :].T # 4X3
 
@@ -145,7 +148,7 @@ class GroundUpVisualizerP3D(BaseVisualizer):
             print('Generating mesh...')
         
         threshold = 10000
-        depth_pixels_values = self.data[mode][self.data[mode] < threshold][:,None]
+        depth_pixels_values = self.data[mode][self.data[mode] < threshold][:,None].copy()
 
         # offset if ground too low
         max_depth = self.data[mode].max()
@@ -165,22 +168,13 @@ class GroundUpVisualizerP3D(BaseVisualizer):
 
         # Get camera intrinsics and extrinsics
         Kinv_td = torch.from_numpy(self.cameras['invK_td']).to(self.device)
-        pose = torch.from_numpy(self.cameras['cam_topdown']['camera_pc']).to(self.device)
+        extrinsics_RT_td = torch.from_numpy(self.cameras['cam_topdown']['camera_pc']).to(self.device)
 
-        # # Back-project to 3D world coordinates
-        # vertices_cam = Kinv_td @ vertices_uv1.T
-        # # vertices_xyz = extrinsics_RT_td.inverse() @ vertices_cam
-        # vertices_xyz = pose @ vertices_cam
-        # vertices_xyz = vertices_xyz.type(torch.float32) # xzy?
-        # vertices_xyz = vertices_xyz[:3, :].T # 4X3
-        
-        depth_b1hw = torch.tensor(self.data[mode][None, None]).to(self.device)
-        depth_b1hw += offset_ground + (100.0 - 5.0) 
-        backprojector = BackprojectDepth(height=256, width=256)
-        backprojector = backprojector.to(self.device)
-        points_14N = backprojector(depth_b1hw, Kinv_td.unsqueeze(0))
-        points_14N = pose.unsqueeze(0) @ points_14N
-        vertices_xyz = points_14N.squeeze(0)[:3, :].T
+        # Back-project to 3D world coordinates
+        vertices_cam = Kinv_td @ vertices_uv1.T
+        vertices_xyz = extrinsics_RT_td.inverse() @ vertices_cam
+        vertices_xyz = vertices_xyz.type(torch.float32) # xzy?
+        vertices_xyz = vertices_xyz[:3, :].T # 4X3
 
         return vertices_xyz
 
@@ -198,6 +192,11 @@ class GroundUpVisualizerP3D(BaseVisualizer):
             raise NotImplementedError
         return mesh
 
+    def transform_mesh_to_world_coordinates(self, p3d_mesh):
+        extrinsics_RT_td = torch.from_numpy(self.cameras['cam_topdown']['camera_pc']).to(self.device)
+        # vertices_xyz = extrinsics_RT_td.inverse() @ vertices_cam
+        
+
     def get_mesh_in_world_coordinates(self, model_name='gt', update_face_colors=False):
         # Find the 3D world coordinates of the ground plane
         cam_bounds_xyz = self.find_camera_bounds_world_3d()
@@ -207,7 +206,10 @@ class GroundUpVisualizerP3D(BaseVisualizer):
 
         # verts = torch.tensor(mesh_elevation.vertices.copy(), dtype=torch.float32).to(self.device)
         faces = torch.tensor(mesh_elevation.faces.copy(), dtype=torch.int64).to(self.device)
+        faces = torch.flip(faces, [1])
         normals = torch.tensor(mesh_elevation.vertex_normals.copy(), dtype=torch.float32).to(self.device)
+        # normals[:,0] = -normals[:,0]
+        # normals[:,1] = -normals[:,1]
 
         # Initialize each vertex to be white
         # verts_rgb = 0.6 * torch.ones_like(verts)[None]
@@ -216,17 +218,19 @@ class GroundUpVisualizerP3D(BaseVisualizer):
 
         # Transform this to 3D world coordinate space this time
         verts_transformed = self.find_mesh_world_coordinates_3d(mode=model_name)
+        # verts_transformed = torch.tensor(mesh_elevation.vertices).cuda()
 
         # Create a PyTorch3D Meshes object
-        self.mesh = Meshes(verts=[verts_transformed], faces=[faces], verts_normals=[normals], textures=textures)
-        # self.mesh = Meshes(verts=[verts_transformed], faces=[faces], textures=textures)
+        self.mesh = Meshes(verts=[verts_transformed], faces=[faces], verts_normals=None, textures=textures)
+        # self.mesh_dict[model_name] = Meshes(verts=[verts_transformed], faces=[faces], verts_normals=[normals], textures=textures)
 
         if update_face_colors:
-            target_color_value = np.array([98, 227, 132]) / 255.0
+            print("Fixing mesh colors...")
+            # target_color_value = np.array([98, 227, 132]) / 255.0 #
+            target_color_value = np.array([250,250,250]) / 255.0
 
             start = time.time()
             # Update vertex colors based on the target color
-            # self.mesh = update_vertex_colors(self.mesh, target_color_value)
             self.mesh = update_vertex_colors_fast(self.mesh, target_color_value)
             # self.mesh = update_vertex_colors_fast_padding(self.mesh, target_color_value)
             end = time.time()
@@ -240,8 +244,8 @@ class GroundUpVisualizerP3D(BaseVisualizer):
 
         # Create pytorch3D cameras
         K = torch.from_numpy(self.cameras['K_p']).to(self.device).clone()
-        R_for_camera_perspective = self.cameras['cam_perspective']['camera_renderer'][:3, :3]
-        t_for_camera_perspective = self.cameras['cam_perspective']['camera_renderer'][:3, -1]
+        R_for_camera_perspective = self.cameras['cam_perspective']['camera_renderer'][:3, :3].copy()
+        t_for_camera_perspective = self.cameras['cam_perspective']['camera_renderer'][:3, -1].copy()
 
 
         # Fix camera K
@@ -255,7 +259,7 @@ class GroundUpVisualizerP3D(BaseVisualizer):
                                             device=self.device)
 
         # Render the scene
-        renderer_ = mesh_renderer( cameras=cameras_perspective, imsize=image_size, device=self.device, offset=offset)
+        renderer_ = mesh_renderer(cameras=cameras_perspective, imsize=image_size, device=self.device, offset=offset)
         perspective_render = renderer_(self.mesh)
 
         perspective_color = perspective_render[0, :].detach().cpu().numpy()
@@ -270,6 +274,100 @@ class GroundUpVisualizerP3D(BaseVisualizer):
 
         return cameras_perspective, image_w_bg
 
+    def render_scene_pyrender(self, image_size=(256, 256), offset=(0, 0, 0), topdown=False):
+
+        if self.verbose:
+            print('Rendering scene...')
+
+        if topdown:
+            K = torch.from_numpy(self.cameras['K_td']).to(self.device).clone()
+            pytorch3d_pose = np.linalg.inv(self.cameras['cam_topdown']['camera_pc'].copy())
+        else:
+            K = torch.from_numpy(self.cameras['K_p']).to(self.device).clone()
+            pytorch3d_pose = np.linalg.inv(self.cameras['cam_perspective']['camera_pc'].copy())
+        
+        # Fix camera K
+        K = self.fix_camera_intrinsics(K, image_size)
+        
+        R_BlenderView_to_OpenCVView = np.diag([-1, -1, 1, 1])
+        rot_transform = np.array([
+            [0, 1, 0, 0],
+            [1, 0, 0, 0],
+            [0,0,1,0],
+            [0,0,0,1],
+        ])
+        opencv_pose = pytorch3d_pose @ rot_transform @ R_BlenderView_to_OpenCVView 
+
+        trimesh_mesh = self.mesh_to_trimesh(self.mesh)
+        
+
+        # light_pos = opencv_pose.copy()
+        light_pos = opencv_pose.copy()
+        vertices_center = trimesh_mesh.vertices.mean(axis=0)
+        # light_pos[:3, 3] = vertices_center
+        # light_pos[2, 3] -= 5.0
+        light_pos = np.eye(4)
+        light_pos[:3, 3] = np.array(vertices_center)
+        light_pos[1, 3] += 2
+
+        lights = create_light_array(
+            pyrender.PointLight(intensity=4), 
+            light_pos, 
+            x_length=1,
+            y_length=1,
+            num_x=2,
+            num_y=2,
+        )
+
+        meshes = [trimesh_mesh]
+        mesh_materials = [None]
+        
+        sphere = trimesh.creation.icosphere(radius=0.1)
+        sphere = transform_trimesh(sphere, light_pos)
+        # meshes.append(sphere)
+        # mesh_materials.append(pyrender.MetallicRoughnessMaterial(metallicFactor=0.0))
+        
+
+        pyrenderer = pyRenderer(image_size[0], image_size[1])
+        render = pyrenderer.render_mesh(
+            meshes, 
+            image_size[0], image_size[1], 
+            opencv_pose,
+            K, True, mesh_materials=mesh_materials, 
+            lights=lights,
+            render_flags=pyrender.RenderFlags.SKIP_CULL_FACES
+        )
+        
+
+
+        # render = np.transpose(render, axes=[1,0,2])
+        image_w_bg = Image.fromarray(render)
+        image_w_bg = image_w_bg.rotate(180)
+        # image_w_bg.save("test.png")
+
+        return None, image_w_bg
+
+    def mesh_to_trimesh(self, mesh_pytorch3d):
+        
+        update_face_colors = True
+        if update_face_colors:
+            target_color_value = np.array([98, 227, 132])/ 255.0
+
+            # Update vertex colors based on the target color
+            mesh_pytorch3d = update_vertex_colors_fast(mesh_pytorch3d, target_color_value)
+            
+        # Convert PyTorch3D mesh to trimesh
+        verts_np = mesh_pytorch3d.verts_packed().detach().cpu().numpy()
+        faces_np = mesh_pytorch3d.faces_packed().detach().cpu().numpy()
+        vertex_colors_np = mesh_pytorch3d.textures._verts_features_padded.detach().cpu().numpy()
+        vertex_colors_np = (vertex_colors_np * 255.0).astype(np.uint8)[0]
+
+        mesh_trimesh = trimesh.Trimesh(vertices=verts_np, faces=faces_np, vertex_colors=vertex_colors_np)
+        mesh_trimesh.visual.vertex_colors = vertex_colors_np
+        
+        # trimesh.repair.fix_normals(mesh_trimesh, multibody=False)
+        
+        return mesh_trimesh
 
     def export_mesh_p3d(self, mesh_name, save_path, update_face_colors=True):
 
@@ -289,7 +387,7 @@ class GroundUpVisualizerP3D(BaseVisualizer):
 
         mesh_trimesh = trimesh.Trimesh(vertices=verts_np, faces=faces_np, vertex_colors=vertex_colors_np)
         mesh_trimesh.visual.vertex_colors = vertex_colors_np
-        trimesh.repair.fix_normals(mesh_trimesh, multibody=False)
+        # trimesh.repair.fix_normals(mesh_trimesh, multibody=False)
 
         # filename = os.path.join(save_path, "mesh_{}_{}.obj".format(mesh_name, self.sample_idx))
         filename = os.path.join(save_path, mesh_name)
@@ -317,7 +415,52 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         mesh_trimesh = trimesh.Trimesh(vertices=verts_np, faces=faces_np, vertex_colors=vertex_colors_np)
         mesh_trimesh.visual.vertex_colors = vertex_colors_np
         
-        trimesh.repair.fix_normals(mesh_trimesh, multibody=False)
+        # trimesh.repair.fix_normals(mesh_trimesh, multibody=False)
         
         return mesh_trimesh
 
+
+        
+    def get_pointcloud_depth_perspective_in_world_coordinates(self, mode='gt', is_save=False,
+                                                              path_to_save=None, minmax_valid_depth=(0.01, 4.0)):
+
+        depth_map_perspective = self.data['gt_perspective'].copy()
+        depth_map_perspective = torch.from_numpy(depth_map_perspective).to(self.device).unsqueeze(0)
+
+        # Get the float valid mask
+        mask_for_valid_depth = ((depth_map_perspective >= minmax_valid_depth[0])
+                                & (depth_map_perspective < minmax_valid_depth[1]))
+        depth_map_perspective[~mask_for_valid_depth] = torch.tensor(np.nan)
+
+
+        # UV coordinates of the depth map - [uv1]
+        depth_pixels_2d_homogeneous, foreground_mask = get_xy_depth_homogeneous_coordinates_bs1_vis(depth_map_perspective,
+                                                                                      mask_for_valid_depth,
+                                                                                      )
+
+        # Get 2D homogeneous coordinates from depth pixels
+        # coords_homogeneous_uv1 = depth_pixels_2d_homogeneous.unsqueeze(0)
+        coords_homogeneous_uv1 = depth_pixels_2d_homogeneous
+
+        # Get camera intrinsics and extrinsics
+        Kinv = self.cameras['invK_p'].copy()
+        Kinv = torch.from_numpy(Kinv).type(torch.float32).to(self.device)
+        extrinsics_RT_td = self.cameras['cam_perspective']['camera_pc'].copy()
+        extrinsics_RT_td = torch.from_numpy(extrinsics_RT_td).type(torch.float32).to(self.device)
+
+        # Backproject to 3d
+        coords_cam = Kinv @ coords_homogeneous_uv1.T
+        pts3D_topdown = extrinsics_RT_td.inverse() @ coords_cam
+
+        # pts3D_topdown = pts3D_topdown.type(torch.float32)
+
+        # pts3D_topdown_ = pts3D_topdown[:3, :].view(3, 256, 256)
+        # pts3D_topdown_ = pts3D_topdown_[:, foreground_mask]
+
+        point_cloud_td = Pointclouds(points=pts3D_topdown[:3, :].T[None, ...])
+
+        if is_save:
+            # filename_pc = os.path.join(path_to_save.format(mode, self.sample_idx))/
+            IO().save_pointcloud(point_cloud_td, path_to_save, colors_as_uint8=False)
+
+        return point_cloud_td

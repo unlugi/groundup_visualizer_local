@@ -40,7 +40,7 @@ def get_visualizer_and_mesh(sample_path, dataset_root, mode="gt", scene_name=Non
     # Run meshing
     gup_visualizer.get_mesh_in_world_coordinates(model_name=mode)
     
-    return gup_visualizer, gup_visualizer.get_trimesh(update_face_colors=False)
+    return gup_visualizer, gup_visualizer.get_trimesh(update_face_colors=True)
 
 
 def dump_debug_viz(gup_visualizer, save_path, mode="gt", offset=(-3.0, 0.0, 4.0), prefix=""):
@@ -181,6 +181,12 @@ def compute_metrics_for_sample(
             # copy the sketch to the sample folder
             filename = f"sketch_topdown_{int(gt_visualizer.sample_idx):04d}.svg0001.png"
             os.system(f'cp {sketch_save_path} {sample_save_path / filename}')
+            
+            gt_trimesh_mesh.export(str(Path(sample_save_path) / f"colored_{int(gt_visualizer.sample_idx):04d}_mesh_gt.ply"))
+            pred_trimesh_mesh.export(str(Path(sample_save_path) / f"{prefix}_colored_{int(gt_visualizer.sample_idx):04d}_mesh_pred.ply"))
+            
+            cam_marker_mesh = gt_visualizer.get_camera_marker_mesh()
+            cam_marker_mesh.export(str(Path(sample_save_path) / f"cam_marker_mesh_{int(gt_visualizer.sample_idx):04d}.ply"))
             
     except Exception as e:
         print("Exception: ", e, sample_path)

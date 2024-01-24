@@ -20,7 +20,7 @@ from utils.p3d_utils import define_camera, mesh_renderer
 from pytorch3d.structures import Meshes
 from pytorch3d.renderer import Textures
 
-from .pyrenderer import Renderer as pyRenderer, transform_trimesh
+from .pyrenderer import Renderer as pyRenderer, camera_marker, transform_trimesh
 from .pyrenderer import create_light_array  
 import pyrender
 
@@ -298,7 +298,7 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         ])
         opencv_pose = pytorch3d_pose @ rot_transform @ R_BlenderView_to_OpenCVView 
 
-        trimesh_mesh = self.mesh_to_trimesh(self.mesh)
+        trimesh_mesh = self.get_trimesh(update_face_colors=True)
         
 
         # light_pos = opencv_pose.copy()
@@ -322,8 +322,8 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         meshes = [trimesh_mesh]
         mesh_materials = [None]
         
-        sphere = trimesh.creation.icosphere(radius=0.1)
-        sphere = transform_trimesh(sphere, light_pos)
+        # sphere = trimesh.creation.icosphere(radius=0.1)
+        # sphere = transform_trimesh(sphere, light_pos)
         # meshes.append(sphere)
         # mesh_materials.append(pyrender.MetallicRoughnessMaterial(metallicFactor=0.0))
         
@@ -347,70 +347,54 @@ class GroundUpVisualizerP3D(BaseVisualizer):
 
         return None, image_w_bg
 
-    def mesh_to_trimesh(self, mesh_pytorch3d):
+    def get_camera_marker_mesh(self, image_size = [256, 256], topdown=False):
+        if topdown:
+            K = torch.from_numpy(self.cameras['K_td']).to(self.device).clone()
+            pytorch3d_pose = np.linalg.inv(self.cameras['cam_topdown']['camera_pc'].copy())
+        else:
+            K = torch.from_numpy(self.cameras['K_p']).to(self.device).clone()
+            pytorch3d_pose = np.linalg.inv(self.cameras['cam_perspective']['camera_pc'].copy())
+
+        # Fix camera K
+        K = self.fix_camera_intrinsics(K, image_size)
+
+        R_BlenderView_to_OpenCVView = np.diag([-1, -1, 1, 1])
+        rot_transform = np.array([
+            [0, 1, 0, 0],
+            [1, 0, 0, 0],
+            [0,0,1,0],
+            [0,0,0,1],
+        ])
+        opencv_pose = pytorch3d_pose @ rot_transform @ R_BlenderView_to_OpenCVView 
+
+        K = K.detach().cpu().numpy()
+        fpv_camera = trimesh.scene.Camera(
+            resolution=(image_size[0], image_size[1]), 
+            focal=(K[0][0], K[1][1])
+        )
+        cam_marker_mesh = camera_marker(fpv_camera, cam_marker_size=0.3, sphere_rad=0.06)[1]
         
-        update_face_colors = True
-        if update_face_colors:
-            target_color_value = np.array([98, 227, 132])/ 255.0
-
-            # Update vertex colors based on the target color
-            mesh_pytorch3d = update_vertex_colors_fast(mesh_pytorch3d, target_color_value)
-            
-        # Convert PyTorch3D mesh to trimesh
-        verts_np = mesh_pytorch3d.verts_packed().detach().cpu().numpy()
-        faces_np = mesh_pytorch3d.faces_packed().detach().cpu().numpy()
-        vertex_colors_np = mesh_pytorch3d.textures._verts_features_padded.detach().cpu().numpy()
-        vertex_colors_np = (vertex_colors_np * 255.0).astype(np.uint8)[0]
-
-        mesh_trimesh = trimesh.Trimesh(vertices=verts_np, faces=faces_np, vertex_colors=vertex_colors_np)
-        mesh_trimesh.visual.vertex_colors = vertex_colors_np
+        cam_mesh = transform_trimesh(cam_marker_mesh, opencv_pose)
         
-        # trimesh.repair.fix_normals(mesh_trimesh, multibody=False)
-        
-        return mesh_trimesh
+        return cam_mesh
 
-    def export_mesh_p3d(self, mesh_name, save_path, update_face_colors=True):
 
-        mesh_pytorch3d = self.mesh
-
-        if update_face_colors:
-            target_color_value = np.array([98, 227, 132])/ 255.0
-
-            # Update vertex colors based on the target color
-            mesh_pytorch3d = update_vertex_colors(mesh_pytorch3d, target_color_value)
-
-        # Convert PyTorch3D mesh to trimesh
-        verts_np = mesh_pytorch3d.verts_packed().detach().cpu().numpy()
-        faces_np = mesh_pytorch3d.faces_packed().detach().cpu().numpy()
-        vertex_colors_np = mesh_pytorch3d.textures._verts_features_padded.detach().cpu().numpy()
-        vertex_colors_np =(vertex_colors_np * 255.0).astype(np.uint8)
-
-        mesh_trimesh = trimesh.Trimesh(vertices=verts_np, faces=faces_np, vertex_colors=vertex_colors_np)
-        mesh_trimesh.visual.vertex_colors = vertex_colors_np
-        # trimesh.repair.fix_normals(mesh_trimesh, multibody=False)
-
-        # filename = os.path.join(save_path, "mesh_{}_{}.obj".format(mesh_name, self.sample_idx))
-        filename = os.path.join(save_path, mesh_name)
-        mesh_trimesh.export(filename+".obj", file_type='obj', include_color=True)
-        # mesh_with_color = export_obj(mesh_trimesh, include_color=True, include_normals=True)
-        # mesh_with_color.export(filename, file_type='obj', include_color=True)
 
     def get_trimesh(self, update_face_colors=True):
         
         mesh_pytorch3d = self.mesh
 
-
         if update_face_colors:
             target_color_value = np.array([98, 227, 132])/ 255.0
 
             # Update vertex colors based on the target color
-            mesh_pytorch3d = update_vertex_colors(mesh_pytorch3d, target_color_value)
+            mesh_pytorch3d = update_vertex_colors_fast(mesh_pytorch3d, target_color_value)
 
         # Convert PyTorch3D mesh to trimesh
         verts_np = mesh_pytorch3d.verts_packed().detach().cpu().numpy()
         faces_np = mesh_pytorch3d.faces_packed().detach().cpu().numpy()
         vertex_colors_np = mesh_pytorch3d.textures._verts_features_padded.detach().cpu().numpy()
-        vertex_colors_np =(vertex_colors_np * 255.0).astype(np.uint8)
+        vertex_colors_np =(vertex_colors_np * 255.0).astype(np.uint8)[0]
 
         mesh_trimesh = trimesh.Trimesh(vertices=verts_np, faces=faces_np, vertex_colors=vertex_colors_np)
         mesh_trimesh.visual.vertex_colors = vertex_colors_np

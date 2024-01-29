@@ -72,7 +72,8 @@ class BaseVisualizer:
         return depth
 
     def load_pred_pers_pred(self):
-        pickle_path = Path("/mnt/data_f/gunlu/Experiments/GroundUp/SimpleRecon/RESULTS/v9/epi_v9_occ_p_empty_linscale_big_ad_50_0/urbanscene3d_epipolar/sf_test_1k_2/depths/")
+        pickle_path = Path("/mnt/data_f/gunlu/Experiments/GroundUp/SimpleRecon/RESULTS/v9/epi_v9_occ_p_empty_linscale_big_50_0/urbanscene3d_epipolar/sf_test_1k_2/depths/")
+        # pickle_path = Path("/mnt/data_f/gunlu/Experiments/GroundUp/SimpleRecon/RESULTS/v9/mono_v9_linscale_small_0/urbanscene3d_epipolar/sf_test_1k_2/depths/")
         pickle_path = pickle_path / f"{int(self.sample_idx):04d}" / f"{int(self.sample_idx):04d}.pickle"
         
         # load pickle

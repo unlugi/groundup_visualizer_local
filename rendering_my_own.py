@@ -255,9 +255,9 @@ def compute_metrics_for_sample(
 
 def main(sample_paths, dataset_root, save_path, debug_dump=False, scene_name=None, verbose=False, clip_with_visibility=False, prefix=""):
     
-    # sample_paths = sample_paths[316:]
-    indices = [0,6,26,81,55,30,41,36]
-    sample_paths = [sample_paths[i] for i in indices] 
+    # sample_paths = sample_paths[:100]
+    # indices = [0,6,26,81,55,30,41,36]
+    # sample_paths = [sample_paths[i] for i in indices] 
     for sample_path in tqdm(sample_paths):
         # create a folder for each sample
         sample_save_path = Path(save_path) / sample_path.split('/')[-1].split('.')[0]

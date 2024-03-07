@@ -172,19 +172,19 @@ class BuildingMeshGenerator:
 
     def get_lookup_labels(self, mask_fg_tensor):
 
+        # Connected components for building mask segmentation
+        mask_fg_labels = kornia.contrib.connected_components(mask_fg_tensor[None, ...].float(), num_iterations=200)
+
         # Apply dilation
         if self.apply_dilation_mask:
             structuring_element = torch.tensor([[1, 1],
                                                 [1, 1], ], dtype=torch.float32, device=mask_fg_tensor.device)
-            kernel = torch.tensor([[1, 0, 1],
-                                   [0, 1, 0],
-                                   [1, 0, 1]], dtype=torch.float32, device=mask_fg_tensor.device)
-            mask_fg_tensor = kornia.morphology.dilation(mask_fg_tensor[None, ...], kernel=kernel)[0, ...]
+            kernel = torch.tensor([[1, 1, 1],
+                                   [1, 1, 1],
+                                   [1, 1, 1]], dtype=torch.float32, device=mask_fg_tensor.device)
+            mask_fg_labels = kornia.morphology.dilation(mask_fg_labels, kernel=kernel)[0, ...]
 
-        # Connected components for building mask segmentation
-        mask_fg_labels = kornia.contrib.connected_components(mask_fg_tensor[None, ...].float(), num_iterations=400)
-
-        lookup_labels = mask_fg_labels.detach().cpu().numpy()[0, 0]
+        lookup_labels = mask_fg_labels.detach().cpu().numpy()[0]
 
         return lookup_labels
 

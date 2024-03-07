@@ -141,7 +141,8 @@ class RendererBlender:
 
 
         if file_extension == 'obj':
-            bpy.ops.import_scene.obj(filepath=file_path)
+            # bpy.ops.import_scene.obj(filepath=file_path)
+            bpy.ops.wm.obj_import(filepath=file_path)
         elif file_extension == 'ply':
             bpy.ops.import_mesh.ply(filepath=file_path)
         elif file_extension == 'blend':
@@ -156,6 +157,30 @@ class RendererBlender:
             print('Error! Input 3D file format not recognized/supported.')
 
         bpy.context.evaluated_depsgraph_get().update()
+
+    def enable_material(self, mode):
+        # Enable color
+
+        # create new material
+        mat = bpy.data.materials.new('Material.001')
+        mat.use_nodes = True
+
+        # Assign material to mesh object
+        current_mesh = bpy.data.objects['mesh_{}'.format(mode)]
+        current_mesh.data.materials.append(mat)
+
+        # Get material nodes
+        nodes = mat.node_tree.nodes
+
+        # Create input and output nodes
+        node_color_input = nodes.new(type='ShaderNodeVertexColor')
+        node_color_input.layer_name = "Color"
+        node_output = nodes.new(type='ShaderNodeOutputMaterial')
+
+        # linking
+        links = mat.node_tree.links
+        link_color = links.new(node_color_input.outputs['Color'], nodes.get("Principled BSDF").inputs['Base Color'])
+        link_output = links.new(nodes.get("Principled BSDF").outputs['BSDF'],  node_output.inputs['Surface'])
 
 
     def initialize_cameras(self, collection_name="Collection"):
@@ -203,6 +228,26 @@ class RendererBlender:
 
         # Update the scene to see the changes in camera pose
         bpy.context.view_layer.update()
+
+
+    def assign_vertex_colors_to_mesh(self, vertex_colors_n4):
+        current_mesh_data = bpy.context.scene.objects['mesh_gt'].data
+
+        # This is to reference the vertex color layer later
+        vertex_colors_name = "vert_colors"
+
+        # Here the color layer is made on the mesh
+        current_mesh_data.vertex_colors.new(name=vertex_colors_name)
+
+        # We define a variable that is used to easily reference
+        # the color layer in code later
+        color_layer = current_mesh_data.vertex_colors[vertex_colors_name]
+
+        # We loop over all the polygons
+        for polygon in current_mesh_data.polygons:
+            for i, index in enumerate(polygon.vertices):
+                loop_index = polygon.loop_indices[i]
+                current_mesh_data.vertex_colors.active.data[loop_index].color = vertex_colors_n4[i]
 
 
 def test_mesh_blender(run_in_gui):

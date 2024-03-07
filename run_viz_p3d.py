@@ -5,14 +5,6 @@ import argparse
 
 from visualizers.visualizer_p3d import GroundUpVisualizerP3D as GroundUpVisualizer
 
-#
-# import torch
-# torch.manual_seed(0)
-# import random
-# random.seed(0)
-# import numpy as np
-# np.random.seed(0)
-
 
 def str2bool(v):
     if isinstance(v, bool):
@@ -30,6 +22,7 @@ def main(run_cfg, add_mesh_color=True):
     dataset_root = run_cfg['dataset_root']
     samples_diffusion = run_cfg['samples_diffusion']
     samples_hf = run_cfg['samples_hf']
+    samples_sr = run_cfg['samples_sr']
     save_path = run_cfg['save_path']
     scene_name = run_cfg['dataset_name']
 
@@ -48,6 +41,7 @@ def main(run_cfg, add_mesh_color=True):
                                             add_color_to_mesh=add_mesh_color,
                                             device='cuda',
                                             samples_baseline=samples_hf[i],
+                                            samples_sr=samples_sr[i],
                                             image_size=image_size,
                                             light_offset=(0.0, 0.0, 5.0)
                                             )
@@ -80,6 +74,11 @@ def define_options():
                         help="Path to the HF baseline models")
     parser.add_argument("--model_name_hf", type=str, default='ms_perturb_grad_normal_2',
                         help="Model name for HF")
+    parser.add_argument("--path_root_sr", type=str,
+                        default='/mnt/data_s/gunlu/Experiments/GroundUp/SimpleRecon/RESULTS/v9',
+                        help="Path to the SimpleRecon models")
+    parser.add_argument("--model_name_sr", type=str, default='epi_v9_occ_p_empty_linscale_big_50_0',
+                        help="Model name for SR")
     parser.add_argument("--save_path", type=str,
                         default='/mnt/data_f/gunlu/Experiments/GroundUp/results_papers/qualitative',
                         help="Save path for renders and meshes")
@@ -107,15 +106,22 @@ def get_configs():
     dataset_root_path = os.path.join(cfg.data_root, cfg.dataset_name)
 
     # Get samples for diffusion
+    # path_diffusion_samples = os.path.join(cfg.path_root_diffusion, cfg.model_name_diffusion, 'test/epoch0001')
     path_diffusion_samples = os.path.join(cfg.path_root_diffusion, cfg.model_name_diffusion, 'test/epoch0035')
+
     samples_diffusion = sorted(glob.glob(os.path.join(path_diffusion_samples, '*_gt.npy')))
 
     # Get samples for HF
     path_hf_samples = os.path.join(cfg.path_root_hf, cfg.model_name_hf, cfg.dataset_name, 'diffusion/pred_depth')
     samples_hf = sorted(glob.glob(os.path.join(path_hf_samples, '*_pred.npy')))
 
+    # Get samples for SR
+    path_sr_samples = os.path.join(cfg.path_root_sr, cfg.model_name_sr, '')#'diffusion/pred_depth')
+    samples_sr = sorted(glob.glob(os.path.join(path_sr_samples, '*.pickle')))
+
+
     # Save path
-    save_path = os.path.join(cfg.save_path, 'testing_renders')
+    save_path = os.path.join(cfg.save_path, 'test_renders_paper_p3d')
     if not os.path.exists(save_path):
         os.makedirs(save_path, exist_ok=True)
 
@@ -123,6 +129,7 @@ def get_configs():
     return {"dataset_root": dataset_root_path,
             "samples_diffusion": samples_diffusion,
             "samples_hf": samples_hf,
+            "samples_sr": samples_sr,
             "save_path": save_path,
             "dataset_name": cfg.dataset_name,
             "image_size": cfg.image_size,

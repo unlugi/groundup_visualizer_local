@@ -4,12 +4,13 @@ import torch
 import PIL.Image as Image
 
 class BaseVisualizer:
-    def __init__(self, sample_path, dataset_root, save_path=None, scene_name=None, sample_baseline=None, ):
-        self.orig_image_size = (256, 256)
+    def __init__(self, sample_path, dataset_root, save_path=None, scene_name=None, sample_baseline=None, samples_sr=None):
+        self.orig_image_size = (256, 256) #(512,512) # (256, 256)
         self.dataset_root = dataset_root
         self.sample_idx = sample_path.split('/')[-1].split('_')[0][-4:]
         self.sample_path = sample_path # diffusion
         self.sample_baseline = sample_baseline # height-fields
+        self.samples_sr = samples_sr # simple-recon
         self.scene_name = scene_name
         self.save_path = save_path
         self.data = self.parse_path_and_read_data()
@@ -44,7 +45,7 @@ class BaseVisualizer:
                 'pred_baseline': pred_baseline,
                 }
 
-    def parse_path_and_read_segmentation(self):
+    def parse_path_and_read_segmentation(self, is_resize=False):
         # Get paths for cam_td, cam_p, K_td, K_p
         # path_segmap_perspective = os.path.join(self.dataset_root, 'Camera', 'segmentation','seg_test_{}.png0001.png'.format(self.sample_idx))
         path_segmap_topdown = os.path.join(self.dataset_root, 'Camera_Top_Down', 'segmentation', 'seg_test_{}.png0001.png'.format(self.sample_idx))
@@ -52,6 +53,10 @@ class BaseVisualizer:
         # Read segmentation maps
         # segmap_perspective = Image.open(path_segmap_perspective, formats=["PNG"]).convert('RGB')
         segmap_topdown = Image.open(path_segmap_topdown, formats=["PNG"]).convert('RGB')
+
+        if is_resize:
+            segmap_topdown = segmap_topdown.resize((256, 256), Image.NEAREST)
+
         segmap_topdown = np.array(segmap_topdown)
 
         if 'ny' in self.scene_name:  # 'train'
@@ -60,6 +65,8 @@ class BaseVisualizer:
             ground_rgb = np.array([254, 202, 192]) / 255.
         elif 'sf' in self.scene_name:
             ground_rgb = np.array([247, 202, 192], dtype=np.float32)  # / 255.
+        elif 'pilot' in self.scene_name:
+            ground_rgb = np.array([241, 202, 192], dtype=np.float32)  # / 255.
         else:
             ground_rgb = np.array([255, 202, 192]) / 255.
 

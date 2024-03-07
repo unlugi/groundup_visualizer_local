@@ -7,6 +7,7 @@ models/*.ckpt
 weights/*.ckpt
 **__pycache__*
 data/
+data/*
 .ipynb_checkpoints
 utils/__pycache__/*
 utils/__pycache__
@@ -17,3 +18,7 @@ visualizers/__pycache__/*.pyc
 utils/__pycache__/*.pyc
 utils/__pycache__/
 utils/__pycache__
+
+temp_scripts/files/
+temp_scripts/*.png
+temp_scripts/*.jpeg

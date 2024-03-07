@@ -12,15 +12,15 @@ import bmesh
 
 
 class GroundUpVisualizerBlender(GroundUpVisualizerP3D):
-    def __init__(self, sample_path, dataset_root, save_path, scene_name, samples_baseline, cfg_dict,
+    def __init__(self, sample_path, dataset_root, save_path, scene_name, samples_baseline, samples_sr, cfg_dict,
                  image_size=(256, 256), light_offset=(0, 0, 5),
                  add_color_to_mesh=None, device='cpu'):
-        super().__init__(sample_path, dataset_root, save_path, scene_name, samples_baseline, image_size, light_offset )
+        super().__init__(sample_path, dataset_root, save_path, scene_name, samples_baseline, samples_sr, image_size=image_size, light_offset=light_offset )
         self.device = self.get_device(device)
         self.cameras = self.parse_path_and_read_cameras()
         self.add_color_to_mesh = add_color_to_mesh
         self.mesh_generator = BuildingMeshGenerator(use_color=add_color_to_mesh, mask_color=self.masks,
-                                                    apply_dilation_mask=False)
+                                                    apply_dilation_mask=True)
 
         self.renderer = RendererBlender(cfg=cfg_dict['cfg_blender'],
                                         cfg_vis=cfg_dict,
@@ -33,7 +33,7 @@ class GroundUpVisualizerBlender(GroundUpVisualizerP3D):
                           'pred_baseline': None,
                           }
 
-        self.prepare_mesh_for_bpy()
+        self.prepare_mesh_for_bpy(mode='pred')
 
 
     def parse_path_and_read_cameras(self):
@@ -78,6 +78,20 @@ class GroundUpVisualizerBlender(GroundUpVisualizerP3D):
         bpy.context.view_layer.update()
         bpy.context.evaluated_depsgraph_get().update()
 
+    def get_per_vertex_colors(self, mode='gt'):
+
+        # Get the current mesh
+        mesh_pytorch3d = self.mesh_dict[mode].clone()
+
+        # Extract vertex colors
+        vertex_colors_np = mesh_pytorch3d.textures._verts_features_padded.detach().cpu().numpy()
+        vertex_colors_np = (vertex_colors_np[0] * 255.0).astype(np.uint8)
+
+        # Append alpha channel for vertex colors
+        vertex_colors_np = np.append(vertex_colors_np, np.ones((vertex_colors_np.shape[0], 1), dtype=np.uint8) * 255,
+                                     axis=1)
+
+        return vertex_colors_np
 
 
     def prepare_mesh_for_bpy(self, mode='gt'):
@@ -110,32 +124,26 @@ class GroundUpVisualizerBlender(GroundUpVisualizerP3D):
             os.makedirs(save_path)
 
         self.export_mesh_p3d(mesh_name='mesh_{}'.format(mode), mode=mode,
-                             save_path=save_path, update_face_colors=False)
+                             save_path=save_path, update_face_colors=False,
+                             export_p3d=False)
 
         # 3) Import to Blender
-        self.renderer.import_input_model(path_mesh=save_path)
+        self.renderer.import_input_model(path_mesh=os.path.join(save_path, 'mesh_{}.obj'.format(mode)))
 
+
+        # 3.5) enable vertex color material
+        self.renderer.enable_material(mode=mode)
+
+        # 4) Get vertex colors and assign to blender mesh (GET RID OF THIS)
+        # vertex_colors = self.get_per_vertex_colors(mode=mode)
+        # self.renderer.assign_vertex_colors_to_mesh(vertex_colors)
 
         # Create save path for current scene
         save_path = os.path.join(self.save_path, self.sample_idx)
         print(save_path)
         if not os.path.exists(save_path):
             os.makedirs(save_path)
-        path_render = os.path.join(save_path, "render_{}_{}_blender.png".format('gt', self.sample_idx))
+        path_render = os.path.join(save_path, "render_{}_{}_blender.png".format(mode, self.sample_idx))
         self.renderer.render(save_path=path_render)
-
-
-
-
-
-
-# TODO:
-# Start from updated P3D visualizer
-# Replace renderer with BlenderRender
-# Feed blender renderer vertex colors
-# Render a sample (gt/pred/hf/pointcloud)
-
-
-
 
 

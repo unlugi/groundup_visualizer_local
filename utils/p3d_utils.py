@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 
-from pytorch3d.renderer import PerspectiveCameras, FoVPerspectiveCameras
+from pytorch3d.renderer import PerspectiveCameras, FoVOrthographicCameras
 from pytorch3d.renderer import ( RasterizationSettings,
                                  MeshRasterizer, MeshRenderer,
                                  SoftPhongShader, HardPhongShader, HardFlatShader,
@@ -23,6 +23,16 @@ def define_camera(K, imsize, R_for_camera_topdown, t_for_camera_topdown, device)
                                 device=device,
                                         )
     return cameras
+
+
+def define_camera_orthographic(device, R_for_camera_topdown, t_for_camera_topdown, ortho_scale=4.25):
+    cameras_topdown = FoVOrthographicCameras(device=device, R=R_for_camera_topdown,
+                                             T=t_for_camera_topdown,
+                                             znear=0.01,
+                                             zfar=20.0,  #20.0, # TODO
+                                             scale_xyz=[[1 / ortho_scale, 1 / ortho_scale, 1 / ortho_scale]]
+                                             )
+    return cameras_topdown
 
 
 # mesh renderer
@@ -91,22 +101,22 @@ def point_cloud_renderer(cameras_topdown, imsize, is_depth=False):
     height, width = imsize
     rasterizer_td_ = PointsRasterizer(cameras=cameras_topdown,
                                       raster_settings=PointsRasterizationSettings(image_size=(height, width),
-                                                                                  radius=0.02, #0.006,
-                                                                                  points_per_pixel=2,
+                                                                                  radius=0.01, #0.006,
+                                                                                  points_per_pixel=1,
                                                                                   #max_points_per_bin=5000
                                                                                   bin_size=0),
                                                                                   )
     if is_depth:
         return rasterizer_td_
     else:
-        # renderer_td_ = PointsRenderer(rasterizer=rasterizer_td_,
-        #                               compositor=AlphaCompositor( background_color=(1.0, 1.0, 1.0, 1.0)) )
+        renderer_td_ = PointsRenderer(rasterizer=rasterizer_td_,
+                                      compositor=AlphaCompositor( background_color=(1.0, 1.0, 1.0, 1.0)) )
 
-        renderer_td_ = PulsarPointsRenderer(rasterizer=PointsRasterizer(cameras=cameras_topdown,
-                                                                    raster_settings=PointsRasterizationSettings(image_size=(height, width),
-                                                                                                                radius=0.02, #0.006,
-                                                                                                                points_per_pixel=2,
-                                                                                                                #max_points_per_bin=5000
-                                                                                                                bin_size=0)),
-                                                                    n_channels=4)#.to(device)
+        # renderer_td_ = PulsarPointsRenderer(rasterizer=PointsRasterizer(cameras=cameras_topdown,
+        #                                                             raster_settings=PointsRasterizationSettings(image_size=(height, width),
+        #                                                                                                         radius=0.02, #0.006,
+        #                                                                                                         points_per_pixel=2,
+        #                                                                                                         #max_points_per_bin=5000
+        #                                                                                                         bin_size=0)),
+        #                                                             n_channels=4)#.to(device)
         return renderer_td_

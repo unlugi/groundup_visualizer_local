@@ -179,9 +179,17 @@ class BuildingMeshGenerator:
         if self.apply_dilation_mask:
             structuring_element = torch.tensor([[1, 1],
                                                 [1, 1], ], dtype=torch.float32, device=mask_fg_tensor.device)
-            kernel = torch.tensor([[1, 1, 1],
-                                   [1, 1, 1],
-                                   [1, 1, 1]], dtype=torch.float32, device=mask_fg_tensor.device)
+            # kernel = torch.tensor([[1, 1, 1],
+            #                        [1, 1, 1],
+            #                        [1, 1, 1]], dtype=torch.float32, device=mask_fg_tensor.device)
+
+            kernel = torch.tensor([[1, 1, 1, 1],
+                                   [1, 1, 1, 1],
+                                   [1, 1, 1, 1],
+                                   [1, 1, 1, 1],
+                                   ], dtype=torch.float32, device=mask_fg_tensor.device)
+
+
             mask_fg_labels = kornia.morphology.dilation(mask_fg_labels, kernel=kernel)[0, ...]
 
         lookup_labels = mask_fg_labels.detach().cpu().numpy()[0]
@@ -230,6 +238,13 @@ class BuildingMeshGenerator:
             if self.color_palette_idx is None:
                 idx_palette = np.random.randint(low=0, high=len(self.pastel_rainbow_palette), size=len(unique_labels))
                 # idx_palette = random.sample(range(0, len(self.pastel_rainbow_palette)), len(unique_labels))
+                # idx_palette = [0, 2, 7, 10, 20, 15, 5, 21, 25, 8, 9, 10]
+                idx_palette = [ 0, 24, 22, 28, 20,
+                               7,  26,  9,  3, 13,
+                               11,  5,  2,  4, 17,
+                               16, 18, 12, 19, 15,
+                               25,  1, 27, 23,  6,
+                               29,  8, 21, 10, 14]
                 self.color_palette_idx = idx_palette
             else:
                 idx_palette = self.color_palette_idx
@@ -255,7 +270,8 @@ class BuildingMeshGenerator:
 
         if self.use_color and self.mask_color is not None:
             # Create per-building labels
-            building_lookup_labels = self.get_lookup_labels(self.mask_color['mask_building'])
+            # building_lookup_labels = self.get_lookup_labels(self.mask_color['mask_building'])
+            building_lookup_labels = self.get_lookup_labels(self.mask_color['mask_building_pred'])
 
             # Create per-building colors
             # color_per_building_n3 = self.create_colors(building_lookup_labels, assign_colors='gt').astype(np.uint8)

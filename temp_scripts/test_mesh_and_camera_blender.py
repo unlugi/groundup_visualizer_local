@@ -11,7 +11,7 @@ from mathutils import Matrix
 debug = False # True if you want to run in Blender GUI
 
 class RendererBlender:
-    def __init__(self, cfg, cfg_vis, cameras, mode='gt'):
+    def __init__(self, cfg, cfg_vis, cameras, mode='gt',):
         self.cfg = cfg
         self.cfg_vis = cfg_vis
         self.cameras = cameras
@@ -19,7 +19,13 @@ class RendererBlender:
         # self.data_paths = self.prepare_data_paths()
         self.set_rendering_settings()
         self.set_light_settings()
-        self.initialize_cameras()
+
+        # Set the camera in the scene
+        if self.cfg_vis['camera_type'] == 'perspective':
+            self.initialize_cameras_perspective()
+        else:
+            self.initialize_cameras_topdown()
+
         # self.import_input_model()
 
     def render(self, save_path):
@@ -134,6 +140,12 @@ class RendererBlender:
         # file_name = file_path.split('/')[-1]
         # file_extension = file_name.split('.')[-1]
 
+        # Delete existing lights
+        # bpy.ops.object.select_all(action='DESELECT')
+        bpy.ops.object.select_by_type(type='MESH')
+        bpy.ops.object.delete()
+
+
         # Parse filepath to extract the file extension
         file_path = path_mesh
         file_name = file_path.split('/')[-1]
@@ -219,12 +231,90 @@ class RendererBlender:
                              (0, 0, 0, 1)))
         cam.matrix_world = rot_z_180 @ cam_matrix_world
 
-        # Location
+        # Location # NOTE this is not needed for camera - makes the camera go to the wrong place
         change_of_coordinates = Matrix([[0, 1, 0],[1, 0, 0],[0, 0, 1]])
         cam.location = change_of_coordinates @ location
 
         # Scale
         cam.scale = (1,1,1) #scale
+
+        # Update the scene to see the changes in camera pose
+        bpy.context.view_layer.update()
+
+    def initialize_cameras_topdown(self, collection_name="Collection"):
+
+        # Read camera pose
+        # camera_matrix_raw = np.load(self.data_paths['path_cam_perspective'])['data']
+        camera_matrix_raw = self.cameras['cam_topdown_raw'].copy()
+
+        # User Camera
+        cam = bpy.context.scene.camera # 'Camera'
+
+        cam.data.ortho_scale = 4.25  # 5.0 #8.5
+        cam.data.sensor_width = 36
+        cam.data.clip_start = self.cfg['CAMERA']['CLIP_START']
+        cam.data.clip_end = self.cfg['CAMERA']['CLIP_END_TOPDOWN']
+        cam.data.display_size = 0.5  # for viewport visualization in Blender GUI
+        cam.data.type = self.cfg['CAMERA']['TYPE_TOPDOWN']
+
+        bpy.context.scene.camera = cam  # Set the active camera in the scene for now.
+
+        # reset location and rotation
+        cam.rotation_euler = (0, 0, 0)
+        cam.location = (0, 0, 0)
+
+        # Get camera object and set its position and rotation
+
+        # Decompose the matrix_world of cam
+        cam_matrix_world = Matrix(camera_matrix_raw.tolist())
+        location, rotation, scale = cam_matrix_world.decompose()
+
+        # Rotation
+        # 180 degree rot around z axis - coordinate change
+        rot_z_180 = Matrix(((-1, 0, 0, 0),
+                             (0, -1, 0, 0),
+                             (0, 0, 1, 0),
+                             (0, 0, 0, 1)))
+        cam.matrix_world = rot_z_180 @ cam_matrix_world
+
+        # Update the scene to see the changes in camera pose
+        bpy.context.view_layer.update()
+
+    def initialize_cameras_perspective(self, collection_name="Collection"):
+
+        # Read camera pose
+        # camera_matrix_raw = np.load(self.data_paths['path_cam_perspective'])['data']
+        camera_matrix_raw = self.cameras['cam_perspective_raw'].copy()
+
+        # User Camera
+        cam = bpy.context.scene.camera # 'Camera'
+
+        cam.data.lens = 20
+        cam.data.sensor_width = 36
+        cam.data.clip_start = self.cfg['CAMERA']['CLIP_START']
+        cam.data.clip_end = self.cfg['CAMERA']['CLIP_END'] # depending on dataset 3 or 4
+        cam.data.display_size = 0.1 # for viewport visualization in Blender GUI
+        cam.data.type = 'PERSP'
+
+        bpy.context.scene.camera = cam  # Set the active camera in the scene for now.
+
+        # reset location and rotation
+        cam.rotation_euler = (0, 0, 0)
+        cam.location = (0, 0, 0)
+
+        # Get camera object and set its position and rotation
+
+        # Decompose the matrix_world of cam
+        cam_matrix_world = Matrix(camera_matrix_raw.tolist())
+        location, rotation, scale = cam_matrix_world.decompose()
+
+        # Rotation
+        # 180 degree rot around z axis - coordinate change
+        rot_z_180 = Matrix(((-1, 0, 0, 0),
+                             (0, -1, 0, 0),
+                             (0, 0, 1, 0),
+                             (0, 0, 0, 1)))
+        cam.matrix_world = rot_z_180 @ cam_matrix_world
 
         # Update the scene to see the changes in camera pose
         bpy.context.view_layer.update()

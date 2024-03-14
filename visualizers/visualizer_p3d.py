@@ -26,18 +26,25 @@ from pytorch3d.structures import Meshes
 from pytorch3d.renderer import Textures
 
 class GroundUpVisualizerP3D(BaseVisualizer):
-    def __init__(self, sample_path, dataset_root, save_path, scene_name, samples_baseline, samples_sr=None,
+    def __init__(self, sample_path, dataset_root, save_path, scene_name, samples_baseline, samples_sr=None, masks_pred=None,
                  image_size=None, light_offset=None, add_color_to_mesh=None, device='cpu'):
         super().__init__(sample_path, dataset_root, save_path, scene_name, samples_baseline, samples_sr)
         self.device = self.get_device(device)
         self.masks = self.parse_path_and_read_segmentation(is_resize=True)
+
+        # Read pred mask
+        pred_mask = self.parse_path_read_pred_mask(masks_pred)
+        self.masks['mask_building_pred'] = pred_mask
+
+
         self.masks = self.move_to_device(self.masks)
         self.cameras = self.parse_path_and_read_cameras()
         self.add_color_to_mesh = add_color_to_mesh
         self.mesh_generator = BuildingMeshGenerator(use_color=add_color_to_mesh, mask_color=self.masks, apply_dilation_mask=True)
-        self.mesh_dict = {'gt': None,
+        self.mesh_dict = {
+                          # 'gt': None,
                           'pred': None,
-                          'pred_baseline': None,
+                          # 'pred_baseline': None,
                           # 'pc_gt': None,
                           # 'pc_pred_proj': None,
                           # 'pc_gt_p': None,
@@ -108,6 +115,16 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         return {'cam_perspective': cam_perspective, 'cam_topdown': cam_topdown,
                 'K_p': K_p, 'K_td': K_td,
                 'invK_p': invK_p, 'invK_td': invK_td}
+
+
+    def parse_path_read_pred_mask(self, mask_pred_path):
+
+        mask_pred = np.load(mask_pred_path)
+
+        return mask_pred
+
+
+
 
     def initialize_p3d_renderer(self, image_size=(256, 256), offset=(0, 0, 0)):
 
@@ -347,8 +364,8 @@ class GroundUpVisualizerP3D(BaseVisualizer):
 
         # Render the scene
         # renderer_ = mesh_renderer( cameras=cameras_perspective, imsize=image_size, device=self.device, offset=offset)
-        perspective_render = self.renderer(self.mesh_dict[mode] )
-        # perspective_render = self.renderer_td(self.mesh_dict[mode])
+        # perspective_render = self.renderer(self.mesh_dict[mode] )
+        perspective_render = self.renderer_td(self.mesh_dict[mode])
         # perspective_render = renderer_(self.mesh_dict[mode])
 
 

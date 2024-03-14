@@ -32,6 +32,8 @@ def main(run_cfg, add_mesh_color=True):
     # of samples to visualize
     num_samples = run_cfg['num_samples']
 
+    masks_pred = run_cfg['pred_masks']
+
     # image size for rendering
     image_size = (run_cfg['image_size'], run_cfg['image_size'])
 
@@ -44,21 +46,16 @@ def main(run_cfg, add_mesh_color=True):
                                             scene_name=scene_name,
                                             add_color_to_mesh=add_mesh_color,
                                             device='cuda',
-                                            samples_baseline=samples_hf[i],
-                                            samples_sr=samples_sr[i],
+                                            samples_baseline=samples_hf[i], #samples_hf[0],
+                                            samples_sr=samples_sr[i], #samples_sr[0],
                                             cfg_dict=run_cfg,
-                                            image_size=(256, 256),
+                                            image_size=image_size,
                                             light_offset=(0, 0, 5),
+                                            masks_pred=masks_pred[i],
                                             )
 
         # Generate the mesh and render all modes
-        # gup_visualizer.mesh_and_render_all_modes(image_size=image_size,
-        #                                          render_scene=True,
-        #                                          export_mesh=True,
-        #                                          fix_colors=run_cfg["fix_mesh_colors"]
-        #                                          )
-
-        # gup_visualizer.prepare_mesh_for_bpy(mode='gt')
+        gup_visualizer.render_samples()
 
         print('done')
 
@@ -105,6 +102,10 @@ def define_options():
     parser.add_argument('--path_blender_configs', type=str,
                         default='configs/config_UrbanScene3D_visualization.yaml',
                         help='config file location under repo root')
+    parser.add_argument('--camera_type', type=str,
+                        default='perspective',
+                        help='perspective or topdown')
+
     args = parser.parse_args()
     return args
 
@@ -118,8 +119,8 @@ def get_configs(run_in_gui):
     dataset_root_path = os.path.join(cfg.data_root, cfg.dataset_name)
 
     # Get samples for diffusion
-    # path_diffusion_samples = os.path.join(cfg.path_root_diffusion, cfg.model_name_diffusion, 'test/epoch0001')
-    path_diffusion_samples = os.path.join(cfg.path_root_diffusion, cfg.model_name_diffusion, 'test/epoch0035')
+    path_diffusion_samples = os.path.join(cfg.path_root_diffusion, cfg.model_name_diffusion, 'test/epoch0001')
+    # path_diffusion_samples = os.path.join(cfg.path_root_diffusion, cfg.model_name_diffusion, 'test/epoch0035')
     samples_diffusion = sorted(glob.glob(os.path.join(path_diffusion_samples, '*_gt.npy')))
 
     # Get samples for HF
@@ -130,10 +131,13 @@ def get_configs(run_in_gui):
     path_sr_samples = os.path.join(cfg.path_root_sr, cfg.model_name_sr, '')  # 'diffusion/pred_depth')
     samples_sr = sorted(glob.glob(os.path.join(path_sr_samples, '*.pickle')))
 
+    path_sr_masks = os.path.join(cfg.path_root_diffusion, cfg.model_name_diffusion, 'masks')
+    masks_pred = sorted(glob.glob(os.path.join(path_sr_masks, 'mask_pred*.npy')))
+
 
     # Save path
     # save_path = os.path.join(cfg.save_path, 'testing_renders_blender')
-    save_path = os.path.join(cfg.save_path, 'HERE')
+    save_path = os.path.join(cfg.save_path, 'test_diff_best_perspective_blender')
     if not os.path.exists(save_path):
         os.makedirs(save_path, exist_ok=True)
 
@@ -156,6 +160,8 @@ def get_configs(run_in_gui):
             "num_samples": cfg.num_samples,
             "fix_mesh_colors": cfg.fix_mesh_colors,
             "cfg_blender": configs_blender,
+            "pred_masks": masks_pred,
+            "camera_type": cfg.camera_type,
             }
 
 

@@ -5,7 +5,7 @@ import PIL.Image as Image
 
 class BaseVisualizer:
     def __init__(self, sample_path, dataset_root, save_path=None, scene_name=None, sample_baseline=None, samples_sr=None):
-        self.orig_image_size = (256, 256) #(512,512) # (256, 256)
+        self.orig_image_size = (512,512)  #(256, 256) #(512,512) # (256, 256)
         self.dataset_root = dataset_root
         self.sample_idx = sample_path.split('/')[-1].split('_')[0][-4:]
         self.sample_path = sample_path # diffusion

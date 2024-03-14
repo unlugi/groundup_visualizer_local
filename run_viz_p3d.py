@@ -26,6 +26,8 @@ def main(run_cfg, add_mesh_color=True):
     save_path = run_cfg['save_path']
     scene_name = run_cfg['dataset_name']
 
+    masks_pred = run_cfg['pred_masks']
+
     # of samples to visualize
     num_samples = run_cfg['num_samples']
 
@@ -40,10 +42,11 @@ def main(run_cfg, add_mesh_color=True):
                                             scene_name=scene_name,
                                             add_color_to_mesh=add_mesh_color,
                                             device='cuda',
-                                            samples_baseline=samples_hf[i],
-                                            samples_sr=samples_sr[i],
+                                            samples_baseline=samples_hf[0],
+                                            samples_sr=samples_sr[0],#samples_sr[i],
                                             image_size=image_size,
-                                            light_offset=(0.0, 0.0, 5.0)
+                                            light_offset=(0.0, 0.0, 5.0),
+                                            masks_pred=masks_pred[i],
                                             )
 
         # Generate the mesh and render all modes
@@ -75,7 +78,7 @@ def define_options():
     parser.add_argument("--model_name_hf", type=str, default='ms_perturb_grad_normal_2',
                         help="Model name for HF")
     parser.add_argument("--path_root_sr", type=str,
-                        default='/mnt/data_s/gunlu/Experiments/GroundUp/SimpleRecon/RESULTS/v9',
+                        default='/mnt/data_f/gunlu/Experiments/GroundUp/SimpleRecon/RESULTS/v9',
                         help="Path to the SimpleRecon models")
     parser.add_argument("--model_name_sr", type=str, default='epi_v9_occ_p_empty_linscale_big_50_0',
                         help="Model name for SR")
@@ -106,8 +109,8 @@ def get_configs():
     dataset_root_path = os.path.join(cfg.data_root, cfg.dataset_name)
 
     # Get samples for diffusion
-    # path_diffusion_samples = os.path.join(cfg.path_root_diffusion, cfg.model_name_diffusion, 'test/epoch0001')
-    path_diffusion_samples = os.path.join(cfg.path_root_diffusion, cfg.model_name_diffusion, 'test/epoch0035')
+    path_diffusion_samples = os.path.join(cfg.path_root_diffusion, cfg.model_name_diffusion, 'test/epoch0001')
+    # path_diffusion_samples = os.path.join(cfg.path_root_diffusion, cfg.model_name_diffusion, 'test/epoch0035')
 
     samples_diffusion = sorted(glob.glob(os.path.join(path_diffusion_samples, '*_gt.npy')))
 
@@ -119,9 +122,12 @@ def get_configs():
     path_sr_samples = os.path.join(cfg.path_root_sr, cfg.model_name_sr, '')#'diffusion/pred_depth')
     samples_sr = sorted(glob.glob(os.path.join(path_sr_samples, '*.pickle')))
 
+    path_sr_masks = os.path.join(cfg.path_root_diffusion, cfg.model_name_diffusion, 'masks')
+    masks_pred = sorted(glob.glob(os.path.join(path_sr_masks, 'mask_pred*.npy')))
+
 
     # Save path
-    save_path = os.path.join(cfg.save_path, 'test_renders_paper_p3d')
+    save_path = os.path.join(cfg.save_path, 'test_renders_paper_p3d_demo_3_meshcolors_td')
     if not os.path.exists(save_path):
         os.makedirs(save_path, exist_ok=True)
 
@@ -134,7 +140,8 @@ def get_configs():
             "dataset_name": cfg.dataset_name,
             "image_size": cfg.image_size,
             "num_samples": cfg.num_samples,
-            "fix_mesh_colors": cfg.fix_mesh_colors
+            "fix_mesh_colors": cfg.fix_mesh_colors,
+            "pred_masks": masks_pred,
             }
 
 

@@ -1,3 +1,4 @@
+import os
 import numpy as np
 from PIL import Image
 
@@ -18,8 +19,10 @@ def save_as_jpeg(npy_file, jpeg_file):
 
 # Example usage
 
-modes = ["gt", "pred"]
+folder = "freehand"
+# modes = ["gt", "pred"]
+modes = ["pred"]
 for mode in modes:
-    npy_file = "files/0000000524_{}.npy".format(mode)
-    jpeg_file = "0000000524_{}.jpeg".format(mode)
-    save_as_jpeg(npy_file, jpeg_file)
+    npy_file = os.path.join(folder, "files/0000000019_{}.npy".format(mode))
+    jpeg_file = "0000000019_{}.jpeg".format(mode)
+    save_as_jpeg(npy_file, os.path.join(folder, jpeg_file))

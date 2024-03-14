@@ -12,10 +12,10 @@ import bmesh
 
 
 class GroundUpVisualizerBlender(GroundUpVisualizerP3D):
-    def __init__(self, sample_path, dataset_root, save_path, scene_name, samples_baseline, samples_sr, cfg_dict,
+    def __init__(self, sample_path, dataset_root, save_path, scene_name, samples_baseline, samples_sr, cfg_dict, masks_pred,
                  image_size=(256, 256), light_offset=(0, 0, 5),
                  add_color_to_mesh=None, device='cpu'):
-        super().__init__(sample_path, dataset_root, save_path, scene_name, samples_baseline, samples_sr, image_size=image_size, light_offset=light_offset )
+        super().__init__(sample_path, dataset_root, save_path, scene_name, samples_baseline, samples_sr, image_size=image_size, light_offset=light_offset, masks_pred=masks_pred )
         self.device = self.get_device(device)
         self.cameras = self.parse_path_and_read_cameras()
         self.add_color_to_mesh = add_color_to_mesh
@@ -28,12 +28,12 @@ class GroundUpVisualizerBlender(GroundUpVisualizerP3D):
                                         cameras=self.cameras)
 
         self.mesh_dict = {'gt': None,
-                          'pc': None,
+                          # 'pc': None,
                           'pred': None,
                           'pred_baseline': None,
                           }
 
-        self.prepare_mesh_for_bpy(mode='pred')
+        # self.prepare_mesh_for_bpy(mode='gt')
 
 
     def parse_path_and_read_cameras(self):
@@ -96,23 +96,6 @@ class GroundUpVisualizerBlender(GroundUpVisualizerP3D):
 
     def prepare_mesh_for_bpy(self, mode='gt'):
 
-        # # 1) Create the mesh
-        # self.get_mesh_in_world_coordinates('gt', update_face_colors=False)
-        # # 2) Convert the trimesh to bpy mesh
-        # self.convert_from_p3d_to_bpy(self.mesh_dict['gt'].clone())
-        # # 3) Also get the vertex colors
-        # ...
-        # # 4) Put the new mesh in the scene
-        # # 5) Render (for checking mesh works)
-        #
-        # # Create save path for current scene
-        # save_path = os.path.join(self.save_path, self.sample_idx)
-        # print(save_path)
-        # if not os.path.exists(save_path):
-        #     os.makedirs(save_path)
-        # path_render = os.path.join(save_path, "render_{}_{}_blender.png".format('gt', self.sample_idx))
-        # self.renderer.render(save_path=path_render)
-
         #1) Create the mesh
         self.get_mesh_in_world_coordinates(mode, update_face_colors=False)
 
@@ -145,5 +128,14 @@ class GroundUpVisualizerBlender(GroundUpVisualizerP3D):
             os.makedirs(save_path)
         path_render = os.path.join(save_path, "render_{}_{}_blender.png".format(mode, self.sample_idx))
         self.renderer.render(save_path=path_render)
+
+
+    def render_samples(self):
+
+        for mesh_mode in self.mesh_dict.keys():
+            print('Preparing mesh mode: {}'.format(mesh_mode))
+            self.prepare_mesh_for_bpy(mode=mesh_mode)
+
+
 
 

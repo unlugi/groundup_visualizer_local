@@ -47,7 +47,7 @@ def main(run_cfg, add_mesh_color=True):
                                             add_color_to_mesh=add_mesh_color,
                                             device='cuda',
                                             samples_baseline=samples_hf[i], #samples_hf[0],
-                                            samples_sr=samples_sr[i], #samples_sr[0],
+                                            samples_sr=samples_sr[0], #samples_sr[i],
                                             cfg_dict=run_cfg,
                                             image_size=image_size,
                                             light_offset=(0, 0, 5),
@@ -80,7 +80,7 @@ def define_options():
     parser.add_argument("--model_name_hf", type=str, default='ms_perturb_grad_normal_2',
                         help="Model name for HF")
     parser.add_argument("--path_root_sr", type=str,
-                        default='/mnt/data_s/gunlu/Experiments/GroundUp/SimpleRecon/RESULTS/v9',
+                        default='/mnt/data_f/gunlu/Experiments/GroundUp/SimpleRecon/RESULTS/v9',
                         help="Path to the SimpleRecon models")
     parser.add_argument("--model_name_sr", type=str, default='epi_v9_occ_p_empty_linscale_big_50_0',
                         help="Model name for SR")
@@ -119,8 +119,8 @@ def get_configs(run_in_gui):
     dataset_root_path = os.path.join(cfg.data_root, cfg.dataset_name)
 
     # Get samples for diffusion
-    path_diffusion_samples = os.path.join(cfg.path_root_diffusion, cfg.model_name_diffusion, 'test/epoch0001')
-    # path_diffusion_samples = os.path.join(cfg.path_root_diffusion, cfg.model_name_diffusion, 'test/epoch0035')
+    # path_diffusion_samples = os.path.join(cfg.path_root_diffusion, cfg.model_name_diffusion, 'test/epoch0001')
+    path_diffusion_samples = os.path.join(cfg.path_root_diffusion, cfg.model_name_diffusion, 'test/epoch0035')
     samples_diffusion = sorted(glob.glob(os.path.join(path_diffusion_samples, '*_gt.npy')))
 
     # Get samples for HF

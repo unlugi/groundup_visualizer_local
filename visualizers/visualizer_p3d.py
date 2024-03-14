@@ -33,8 +33,11 @@ class GroundUpVisualizerP3D(BaseVisualizer):
         self.masks = self.parse_path_and_read_segmentation(is_resize=True)
 
         # Read pred mask
-        pred_mask = self.parse_path_read_pred_mask(masks_pred)
-        self.masks['mask_building_pred'] = pred_mask
+        if masks_pred is not None:
+            pred_mask = self.parse_path_read_pred_mask(masks_pred)
+            self.masks['mask_building_pred'] = pred_mask
+        else:
+            self.masks['mask_building_pred'] = self.masks['mask_building'] # TODO: workaround
 
 
         self.masks = self.move_to_device(self.masks)

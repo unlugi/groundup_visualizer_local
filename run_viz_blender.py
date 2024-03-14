@@ -51,7 +51,7 @@ def main(run_cfg, add_mesh_color=True):
                                             cfg_dict=run_cfg,
                                             image_size=image_size,
                                             light_offset=(0, 0, 5),
-                                            masks_pred=masks_pred[i],
+                                            masks_pred=None, #masks_pred[i],
                                             )
 
         # Generate the mesh and render all modes

@@ -2,7 +2,7 @@
 .vscode/
 debug_dump
 logs/
-logs
+logsg
 models/*.ckpt
 weights/*.ckpt
 **__pycache__*
@@ -22,3 +22,9 @@ utils/__pycache__
 temp_scripts/files/
 temp_scripts/*.png
 temp_scripts/*.jpeg
+temp_scripts/*.obj
+temp_scripts/*.exr
+temp_scripts/*.gif
+temp_scripts/testing_aliasing/*
+temp_scripts/testing_aliasing
+temp_scripts/testing_aliasing/data_final_version

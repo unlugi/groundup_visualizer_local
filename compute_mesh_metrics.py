@@ -272,7 +272,7 @@ def cli(
 ):
 
     # get paths of samples to evaluate. They should have "_gt.npy" in the name,
-    # and there should be a corresponding prediction file with with "_pred.npy" in the name.
+    # and there should be a corresponding prediction file with "_pred.npy" in the name.
     sample_paths = sorted(glob.glob(os.path.join(predictions_path, '*.npy')))
     sample_paths = [sample_path for sample_path in sample_paths if "_gt.npy" in Path(sample_path).name]
     

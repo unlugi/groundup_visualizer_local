@@ -68,6 +68,11 @@ class BaseVisualizer:
         
         # set invalids to nan or something else (sky is 6555555 in .exr files)
         depth[~mask_b] = torch.tensor(np.nan)
+
+
+        # mask out the ground too
+        mask_perspective = self.parse_path_and_read_segmentation_perspective_gt()
+        depth[mask_perspective['mask_ground']] = torch.tensor(np.nan)
         
         return depth
 
@@ -110,3 +115,40 @@ class BaseVisualizer:
         return {'mask_ground': mask_ground,
                 'mask_building': mask_building,
                 'segmap_topdown': segmap_topdown }
+
+
+    def parse_path_and_read_segmentation_perspective_gt(self):
+        # Get paths for cam_td, cam_p, K_td, K_p
+        path_segmap_perspective = os.path.join(self.dataset_root, 'Camera', 'segmentation','seg_test_{}.png0001.png'.format(self.sample_idx))
+        # path_segmap_topdown = os.path.join(self.dataset_root, 'Camera_Top_Down', 'segmentation', 'seg_test_{}.png0001.png'.format(self.sample_idx))
+
+        # Read segmentation maps
+        segmap_perspective = Image.open(path_segmap_perspective, formats=["PNG"]).convert('RGB')
+        # segmap_topdown = Image.open(path_segmap_topdown, formats=["PNG"]).convert('RGB')
+        # segmap_topdown = np.array(segmap_topdown)
+        segmap_perspective = np.array(segmap_perspective)
+
+        if 'ny' in self.scene_name:  # 'train'
+            ground_rgb = np.array([255, 202, 192]) / 255.
+        elif 'chi' in self.scene_name:  # 'val'
+            ground_rgb = np.array([254, 202, 192]) / 255.
+        elif 'sf' in self.scene_name:
+            ground_rgb = np.array([247, 202, 192], dtype=np.float32)  # / 255.
+        else:
+            ground_rgb = np.array([255, 202, 192]) / 255.
+
+        # mask_ground = (segmap_topdown[..., 0] == ground_rgb[0]) & \
+        #               (segmap_topdown[..., 1] == ground_rgb[1]) & \
+        #               (segmap_topdown[..., 2] == ground_rgb[2])
+
+        mask_ground = (segmap_perspective[..., 0] == ground_rgb[0]) & \
+                      (segmap_perspective[..., 1] == ground_rgb[1]) & \
+                      (segmap_perspective[..., 2] == ground_rgb[2])
+
+
+        mask_building = ~mask_ground  # buildings mask binary
+
+        return {'mask_ground': mask_ground,
+                'mask_building': mask_building,
+                'segmap_perspective': segmap_perspective }
+
